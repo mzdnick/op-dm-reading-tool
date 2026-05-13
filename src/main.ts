@@ -141,9 +141,10 @@ function renderResult(result: CalibrationScanResult): void {
   const segmentText = isAllClear
     ? `${result.totalSegments} ${logFileKind(result.logSource)} segment(s), earliest valid calibration in segment ${result.segment}`
     : `${result.segment} after scanning ${result.scannedSegments} ${logFileKind(result.logSource)} segment(s)`;
+  const toleranceMarkup = renderToleranceVisualization(message, result.routeInfo, "Tolerance landing");
   const previousValidMarkup =
     !isAllClear && result.previousValid
-      ? renderPreviousValid(result.previousValid)
+      ? renderPreviousValid(result.previousValid, result.routeInfo)
       : !isAllClear
         ? `<section class="previous-valid"><h3>Previous valid calibration</h3><p class="muted">No valid calibration was seen before this invalid event in the scanned logs.</p></section>`
         : "";
@@ -161,6 +162,7 @@ function renderResult(result: CalibrationScanResult): void {
       <div><dt>Route</dt><dd><code>${escapeHtml(result.routeName)}</code></dd></div>
       <div><dt>Segment</dt><dd>${segmentText}</dd></div>
       <div><dt>Status</dt><dd>${message.statusName} (${message.calPerc}% complete, ${message.validBlocks} valid blocks)</dd></div>
+      <div><dt>Device tolerance</dt><dd>${limits.label}</dd></div>
       <div><dt>Roll / pitch / yaw</dt><dd>${formatAngle(roll)} / ${formatAngle(pitch)} / ${formatAngle(yaw)}</dd></div>
       <div><dt>Spread</dt><dd>${message.rpyCalibSpread.map(formatAngle).join(" / ") || "n/a"}</dd></div>
       <div><dt>Height</dt><dd>${message.height.length ? `${message.height[0].toFixed(2)} m` : "n/a"}</dd></div>
@@ -168,6 +170,7 @@ function renderResult(result: CalibrationScanResult): void {
       <div><dt>Source log</dt><dd>${result.logSource === "qlogs" ? "qlog" : "rlog"}</dd></div>
       <div><dt>Applied tolerance</dt><dd>${limits.label}: pitch ${formatDegrees(limits.pitchMinRad)} to ${formatDegrees(limits.pitchMaxRad)}, yaw ${formatDegrees(limits.yawMinRad)} to ${formatDegrees(limits.yawMaxRad)}</dd></div>
     </dl>
+    ${toleranceMarkup}
     ${previousValidMarkup}
   `;
 }
@@ -176,7 +179,39 @@ function logFileKind(source: CalibrationScanResult["logSource"]): "qlog" | "rlog
   return source === "qlogs" ? "qlog" : "rlog";
 }
 
-function renderPreviousValid(previous: NonNullable<CalibrationScanResult["previousValid"]>): string {
+function renderToleranceVisualization(message: NonNullable<CalibrationScanResult["message"]>, routeInfo: CalibrationScanResult["routeInfo"], title: string): string {
+  const limits = CALIBRATION_LIMITS[deviceLimitKey(routeInfo)];
+  return `
+    <section class="tolerance-visual">
+      <h3>${title}</h3>
+      ${renderToleranceRow("Pitch", message.rpyCalib[1], limits.pitchMinRad, limits.pitchMaxRad)}
+      ${renderToleranceRow("Yaw", message.rpyCalib[2], limits.yawMinRad, limits.yawMaxRad)}
+    </section>
+  `;
+}
+
+function renderToleranceRow(label: string, value: number, min: number, max: number): string {
+  const rawPercent = ((value - min) / (max - min)) * 100;
+  const markerPercent = Math.min(100, Math.max(0, rawPercent));
+  const inside = value > min && value < max;
+  return `
+    <div class="tolerance-row">
+      <div class="tolerance-row-header">
+        <strong>${label}</strong>
+        <span class="${inside ? "inside" : "outside"}">${formatAngle(value)} ${inside ? "inside" : "outside"}</span>
+      </div>
+      <div class="tolerance-track" aria-label="${label} tolerance ${formatDegrees(min)} to ${formatDegrees(max)}, value ${formatAngle(value)}">
+        <span class="tolerance-marker" style="left: ${markerPercent}%"></span>
+      </div>
+      <div class="tolerance-axis">
+        <span>${formatDegrees(min)}</span>
+        <span>${formatDegrees(max)}</span>
+      </div>
+    </div>
+  `;
+}
+
+function renderPreviousValid(previous: NonNullable<CalibrationScanResult["previousValid"]>, routeInfo: CalibrationScanResult["routeInfo"]): string {
   const message = previous.message;
   const roll = message.rpyCalib[0];
   const pitch = message.rpyCalib[1];
@@ -190,6 +225,7 @@ function renderPreviousValid(previous: NonNullable<CalibrationScanResult["previo
         <div><dt>Roll / pitch / yaw</dt><dd>${formatAngle(roll)} / ${formatAngle(pitch)} / ${formatAngle(yaw)}</dd></div>
         <div><dt>Log mono time</dt><dd>${formatLogMonoTime(message.logMonoTime)}</dd></div>
       </dl>
+      ${renderToleranceVisualization(message, routeInfo, "Previous valid landing")}
     </section>
   `;
 }

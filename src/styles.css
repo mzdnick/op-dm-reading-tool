@@ -266,6 +266,65 @@ footer {
   padding-top: 18px;
 }
 
+.tolerance-visual {
+  margin-top: 22px;
+  border-top: 1px solid #edf1ef;
+  padding-top: 18px;
+}
+
+.tolerance-row {
+  margin-top: 14px;
+}
+
+.tolerance-row-header,
+.tolerance-axis {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.tolerance-row-header {
+  align-items: baseline;
+}
+
+.inside {
+  color: #0e563e;
+  font-weight: 800;
+}
+
+.outside {
+  color: #8b2f2f;
+  font-weight: 800;
+}
+
+.tolerance-track {
+  position: relative;
+  height: 14px;
+  margin-top: 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #dce8e3 0%, #bfe8d6 50%, #dce8e3 100%);
+  border: 1px solid #c7d7d1;
+}
+
+.tolerance-marker {
+  position: absolute;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #173d39;
+  border: 3px solid #ffffff;
+  box-shadow: 0 1px 5px rgb(0 0 0 / 0.25);
+  transform: translate(-50%, -50%);
+}
+
+.tolerance-axis {
+  margin-top: 6px;
+  color: #5b6d69;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
 footer {
   margin: 20px 0 0;
   font-size: 0.92rem;
