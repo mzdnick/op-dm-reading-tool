@@ -13,7 +13,7 @@ export const OPENPILOT_MASTER_SOURCES = {
 
 export const CALIBRATION_LIMITS = {
   default: {
-    label: "Most devices",
+    label: "tici / comma 3 and tizi / comma 3x",
     pitchMinRad: -0.09074112085129739,
     pitchMaxRad: 0.17,
     yawMinRad: -0.06912048084718224,

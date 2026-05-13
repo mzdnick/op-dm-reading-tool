@@ -63,11 +63,11 @@ As of the current openpilot `master` code checked on 2026-05-13, calibration is
 considered valid after at least 5 valid calibration blocks and when pitch/yaw are
 inside:
 
-- Most devices: pitch `-5.20°` to `9.74°`, yaw `-3.96°` to `3.96°`
+- tici / comma 3 and tizi / comma 3x: pitch `-5.20°` to `9.74°`, yaw `-3.96°` to `3.96°`
 - mici / comma four: pitch `-8.20°` to `12.74°`, yaw `-3.96°` to `3.96°`
 
-The openpilot device settings text rounds the common case to within `4°`
-left/right and within `5°` up or `9°` down.
+The openpilot device settings text rounds the tici / comma 3 and tizi / comma
+3x case to within `4°` left/right and within `5°` up or `9°` down.
 
 ## Useful commands
 

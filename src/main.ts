@@ -48,7 +48,7 @@ app.innerHTML = `
         <p>This scanner flags logged invalid calibration, or calibration outside these current openpilot pitch/yaw limits.</p>
         <dl class="limits">
           <div>
-            <dt>Most devices</dt>
+            <dt>tici / comma 3 and tizi / comma 3x</dt>
             <dd>${formatDegrees(CALIBRATION_LIMITS.default.pitchMinRad)} up to ${formatDegrees(CALIBRATION_LIMITS.default.pitchMaxRad)} down, yaw ${formatDegrees(CALIBRATION_LIMITS.default.yawMinRad)} to ${formatDegrees(CALIBRATION_LIMITS.default.yawMaxRad)}</dd>
           </div>
           <div>
@@ -56,7 +56,7 @@ app.innerHTML = `
             <dd>${formatDegrees(CALIBRATION_LIMITS.mici.pitchMinRad)} up to ${formatDegrees(CALIBRATION_LIMITS.mici.pitchMaxRad)} down, yaw ${formatDegrees(CALIBRATION_LIMITS.mici.yawMinRad)} to ${formatDegrees(CALIBRATION_LIMITS.mici.yawMaxRad)}</dd>
           </div>
         </dl>
-        <p class="muted">The device settings copy rounds this to within 4° left/right and within 5° up or 9° down for most devices.</p>
+        <p class="muted">The device settings copy rounds this to within 4° left/right and within 5° up or 9° down for tici / comma 3 and tizi / comma 3x.</p>
       </article>
     </section>
 
