@@ -18,17 +18,24 @@ export interface CalibrationScanResult {
   segment: number | null;
   message: CalibrationMessage | null;
   previousValid: CalibrationScanMessage | null;
+  readFailures: LogReadFailure[];
   scannedSegments: number;
   totalSegments: number;
   scanMode: "quick" | "full";
-  resultType: "invalid" | "valid";
-  reason: "status-invalid" | "outside-current-limits" | "no-invalid-found" | "first-valid";
+  resultType: "invalid" | "valid" | "incomplete";
+  reason: "status-invalid" | "outside-current-limits" | "no-invalid-found" | "first-valid" | "scan-incomplete";
 }
 
 export interface CalibrationScanMessage {
   logUrl: string;
   segment: number;
   message: CalibrationMessage;
+}
+
+export interface LogReadFailure {
+  logUrl: string;
+  segment: number;
+  message: string;
 }
 
 interface RouteLogContext {
@@ -59,6 +66,7 @@ export async function scanRouteForFirstValidCalibration(
         segment,
         message,
         previousValid: null,
+        readFailures: [],
         scannedSegments: index + 1,
         totalSegments: context.logUrls.length,
         scanMode: "quick",
@@ -78,11 +86,27 @@ export async function scanRouteForInvalidCalibration(
   const context = await loadRouteLogContext(input, onProgress);
   let firstValid: CalibrationScanMessage | null = null;
   let lastValid: CalibrationScanMessage | null = null;
+  let decodedSegments = 0;
+  const readFailures: LogReadFailure[] = [];
 
   for (let index = 0; index < context.logUrls.length; index += 1) {
     const logUrl = context.logUrls[index];
     const segment = segmentFromUrl(logUrl);
-    const calibrationMessages = await downloadCalibrationMessages(logUrl, segment, index, context.logUrls.length, context.source, onProgress);
+    let calibrationMessages: CalibrationMessage[];
+    try {
+      calibrationMessages = await downloadCalibrationMessages(logUrl, segment, index, context.logUrls.length, context.source, onProgress);
+      decodedSegments += 1;
+    } catch (error) {
+      const failure = { logUrl, segment, message: readableLogError(error) };
+      readFailures.push(failure);
+      onProgress({
+        phase: "decode",
+        message: `Could not read ${logFileKind(context.source)} segment ${segment}: ${failure.message}`,
+        current: index + 1,
+        total: context.logUrls.length,
+      });
+      continue;
+    }
     const message = calibrationMessages.find((calibration) => isInvalidCalibration(calibration, context.routeInfo));
     if (message) {
       const reason = message.status === 2 ? "status-invalid" : "outside-current-limits";
@@ -98,6 +122,7 @@ export async function scanRouteForInvalidCalibration(
         segment,
         message,
         previousValid: sameSegmentPreviousValid ? { logUrl, segment, message: sameSegmentPreviousValid } : lastValid,
+        readFailures,
         scannedSegments: index + 1,
         totalSegments: context.logUrls.length,
         scanMode: "full",
@@ -114,7 +139,14 @@ export async function scanRouteForInvalidCalibration(
   }
 
   if (firstValid) {
-    onProgress({ phase: "done", message: `No invalid calibration found in ${context.logUrls.length} ${logFileKind(context.source)} segment(s).` });
+    if (readFailures.length > 0) {
+      onProgress({
+        phase: "done",
+        message: `No invalid calibration found in ${decodedSegments} decoded ${logFileKind(context.source)} segment(s), but ${readFailures.length} segment(s) could not be read.`,
+      });
+    } else {
+      onProgress({ phase: "done", message: `No invalid calibration found in ${context.logUrls.length} ${logFileKind(context.source)} segment(s).` });
+    }
     return {
       routeName: context.routeName,
       routeInfo: context.routeInfo,
@@ -123,15 +155,21 @@ export async function scanRouteForInvalidCalibration(
       segment: firstValid.segment,
       message: firstValid.message,
       previousValid: null,
-      scannedSegments: context.logUrls.length,
+      readFailures,
+      scannedSegments: decodedSegments,
       totalSegments: context.logUrls.length,
       scanMode: "full",
-      resultType: "valid",
-      reason: "no-invalid-found",
+      resultType: readFailures.length > 0 ? "incomplete" : "valid",
+      reason: readFailures.length > 0 ? "scan-incomplete" : "no-invalid-found",
     };
   }
 
-  throw new Error(`Scanned ${context.logUrls.length} uploaded ${logFileKind(context.source)} segment(s), but found no invalid or valid liveCalibration messages.`);
+  if (readFailures.length > 0) {
+    throw new Error(
+      `Decoded ${decodedSegments} uploaded ${logFileKind(context.source)} segment(s) and skipped ${readFailures.length} unreadable segment(s), but found no invalid or valid liveCalibration messages.`,
+    );
+  }
+  throw new Error(`Scanned ${decodedSegments} uploaded ${logFileKind(context.source)} segment(s), but found no invalid or valid liveCalibration messages.`);
 }
 
 async function loadRouteLogContext(
@@ -194,4 +232,12 @@ async function fetchLog(logUrl: string): Promise<Response> {
 
 function logFileKind(source: "qlogs" | "rlogs"): "qlog" | "rlog" {
   return source === "qlogs" ? "qlog" : "rlog";
+}
+
+function readableLogError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.toLowerCase().includes("unexpected eof")) {
+    return "unexpected EOF while decompressing; this log segment looks truncated";
+  }
+  return message;
 }

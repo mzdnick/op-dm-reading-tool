@@ -136,23 +136,35 @@ function renderResult(result: CalibrationScanResult): void {
   const roll = message.rpyCalib[0];
 
   const isInvalid = result.resultType === "invalid";
+  const isIncomplete = result.resultType === "incomplete";
   const isFullAllClear = result.scanMode === "full" && result.resultType === "valid";
   const isQuick = result.scanMode === "quick";
-  const resultEyebrow = isQuick ? "quick calibration look" : isFullAllClear ? "route calibration all clear" : "earliest invalid calibration";
+  const resultEyebrow = isQuick
+    ? "quick calibration look"
+    : isIncomplete
+      ? "partial route scan"
+      : isFullAllClear
+        ? "route calibration all clear"
+        : "earliest invalid calibration";
   const resultBadge = isQuick
     ? "first valid calibration"
+    : isIncomplete
+      ? "scan incomplete"
     : isFullAllClear
       ? "no invalid calibration found"
       : result.reason === "status-invalid"
         ? "logged invalid"
         : "outside current limits";
-  const resultBadgeClass = isInvalid ? "warn" : "ok";
+  const resultBadgeClass = isInvalid || isIncomplete ? "warn" : "ok";
   const segmentText = isFullAllClear
     ? `${result.totalSegments} ${logFileKind(result.logSource)} segment(s), earliest valid calibration in segment ${result.segment}`
+    : isIncomplete
+      ? `${result.scannedSegments} of ${result.totalSegments} ${logFileKind(result.logSource)} segment(s) decoded, earliest valid calibration in segment ${result.segment}`
     : isQuick
       ? `${result.segment} after scanning ${result.scannedSegments} ${logFileKind(result.logSource)} segment(s)`
     : `${result.segment} after scanning ${result.scannedSegments} ${logFileKind(result.logSource)} segment(s)`;
   const toleranceMarkup = renderToleranceVisualization(message, result.routeInfo, "Tolerance landing");
+  const readFailuresMarkup = result.readFailures.length > 0 ? renderReadFailures(result) : "";
   const previousValidMarkup =
     isInvalid && result.previousValid
       ? renderPreviousValid(result.previousValid, result.routeInfo)
@@ -181,6 +193,7 @@ function renderResult(result: CalibrationScanResult): void {
       <div><dt>Source log</dt><dd>${result.logSource === "qlogs" ? "qlog" : "rlog"}</dd></div>
       <div><dt>Applied tolerance</dt><dd>${limits.label}: pitch ${formatDegrees(limits.pitchMinRad)} to ${formatDegrees(limits.pitchMaxRad)}, yaw ${formatDegrees(limits.yawMinRad)} to ${formatDegrees(limits.yawMaxRad)}</dd></div>
     </dl>
+    ${readFailuresMarkup}
     ${toleranceMarkup}
     ${previousValidMarkup}
   `;
@@ -237,6 +250,23 @@ function renderPreviousValid(previous: NonNullable<CalibrationScanResult["previo
         <div><dt>Log mono time</dt><dd>${formatLogMonoTime(message.logMonoTime)}</dd></div>
       </dl>
       ${renderToleranceVisualization(message, routeInfo, "Previous valid landing")}
+    </section>
+  `;
+}
+
+function renderReadFailures(result: CalibrationScanResult): string {
+  return `
+    <section class="scan-warning">
+      <h3>Unreadable ${logFileKind(result.logSource)} segment(s)</h3>
+      <p class="muted">These segments could not be checked, so the full scan is incomplete.</p>
+      <ul>
+        ${result.readFailures
+          .map(
+            (failure) =>
+              `<li>Segment ${failure.segment}: ${escapeHtml(failure.message)}</li>`,
+          )
+          .join("")}
+      </ul>
     </section>
   `;
 }

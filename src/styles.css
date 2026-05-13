@@ -277,6 +277,19 @@ footer {
   padding-top: 18px;
 }
 
+.scan-warning {
+  margin-top: 18px;
+  border: 1px solid #f0caa8;
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: #fff6ed;
+}
+
+.scan-warning ul {
+  margin: 10px 0 0;
+  padding-left: 20px;
+}
+
 .tolerance-visual {
   margin-top: 22px;
   border-top: 1px solid #edf1ef;
