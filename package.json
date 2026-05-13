@@ -1,0 +1,22 @@
+{
+  "name": "op-calibration-reading-tool",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc && vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "vitest run --exclude src/scan.smoke.test.ts",
+    "test:smoke": "vitest run src/scan.smoke.test.ts"
+  },
+  "dependencies": {
+    "bz2": "1.0.1",
+    "fzstd": "0.1.1",
+    "vite": "8.0.12"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "vitest": "4.0.14"
+  }
+}
