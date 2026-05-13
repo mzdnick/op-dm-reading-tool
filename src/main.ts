@@ -1,7 +1,7 @@
 import "./styles.css";
 import { CALIBRATION_LIMITS, GITHUB_REPO_URL, OPENPILOT_MASTER_SOURCES } from "./constants";
 import { formatAngle, formatDegrees, formatLogMonoTime, pitchDirection, yawDirection, deviceLimitKey } from "./format";
-import { scanRouteForInvalidCalibration, type CalibrationScanResult } from "./scan";
+import { scanRouteForFirstValidCalibration, scanRouteForInvalidCalibration, type CalibrationScanResult } from "./scan";
 
 const app = document.querySelector<HTMLDivElement>("#app");
 if (!app) throw new Error("Missing app element");
@@ -20,14 +20,15 @@ app.innerHTML = `
       <div class="input-row">
         <input id="route-input" name="route" autocomplete="off" spellcheck="false"
           placeholder="https://connect.comma.ai/5beb9b58bd12b691/0000010a--a51155e496/90/105" />
-        <button id="scan-button" type="submit">Scan route</button>
+        <button class="scan-button" type="submit" name="scan-mode" value="quick">Quick look</button>
+        <button class="scan-button secondary" type="submit" name="scan-mode" value="full">Full scan</button>
       </div>
       <button class="ghost-button" id="demo-button" type="button">Use demo route</button>
     </form>
 
     <section class="status-panel" id="status-panel" aria-live="polite">
       <div class="progress-track"><div id="progress-bar"></div></div>
-      <p id="status-text">Paste a public route and scan qlogs for invalid calibration. Everything runs in this browser tab.</p>
+      <p id="status-text">Paste a public route for a quick calibration look, or run a full qlog scan for invalid calibration.</p>
     </section>
 
     <section id="result-panel" class="result-panel" hidden></section>
@@ -72,7 +73,7 @@ app.innerHTML = `
 
 const form = document.querySelector<HTMLFormElement>("#reader-form")!;
 const input = document.querySelector<HTMLInputElement>("#route-input")!;
-const button = document.querySelector<HTMLButtonElement>("#scan-button")!;
+const scanButtons = [...document.querySelectorAll<HTMLButtonElement>(".scan-button")];
 const demoButton = document.querySelector<HTMLButtonElement>("#demo-button")!;
 const statusText = document.querySelector<HTMLParagraphElement>("#status-text")!;
 const progressBar = document.querySelector<HTMLDivElement>("#progress-bar")!;
@@ -85,11 +86,14 @@ demoButton.addEventListener("click", () => {
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
+  const submitter = event.submitter instanceof HTMLButtonElement ? event.submitter : null;
+  const mode = submitter?.value === "full" ? "full" : "quick";
   setBusy(true);
   clearResult();
 
   try {
-    const result = await scanRouteForInvalidCalibration(input.value, (progress) => {
+    const scanner = mode === "full" ? scanRouteForInvalidCalibration : scanRouteForFirstValidCalibration;
+    const result = await scanner(input.value, (progress) => {
       statusText.textContent = progress.message;
       if (progress.total && progress.current) {
         progressBar.style.width = `${Math.max(5, (progress.current / progress.total) * 100)}%`;
@@ -108,10 +112,11 @@ form.addEventListener("submit", async (event) => {
 });
 
 function setBusy(busy: boolean): void {
-  button.disabled = busy;
+  for (const button of scanButtons) {
+    button.disabled = busy;
+  }
   demoButton.disabled = busy;
   input.disabled = busy;
-  button.textContent = busy ? "Scanning..." : "Scan route";
   progressBar.classList.toggle("error", false);
   if (busy) progressBar.style.width = "4%";
 }
@@ -130,22 +135,28 @@ function renderResult(result: CalibrationScanResult): void {
   const yaw = message.rpyCalib[2];
   const roll = message.rpyCalib[0];
 
-  const isAllClear = result.resultType === "valid";
-  const resultEyebrow = isAllClear ? "route calibration all clear" : "earliest invalid calibration";
-  const resultBadge = isAllClear
-    ? "no invalid calibration found"
-    : result.reason === "status-invalid"
-      ? "logged invalid"
-      : "outside current limits";
-  const resultBadgeClass = isAllClear ? "ok" : "warn";
-  const segmentText = isAllClear
+  const isInvalid = result.resultType === "invalid";
+  const isFullAllClear = result.scanMode === "full" && result.resultType === "valid";
+  const isQuick = result.scanMode === "quick";
+  const resultEyebrow = isQuick ? "quick calibration look" : isFullAllClear ? "route calibration all clear" : "earliest invalid calibration";
+  const resultBadge = isQuick
+    ? "first valid calibration"
+    : isFullAllClear
+      ? "no invalid calibration found"
+      : result.reason === "status-invalid"
+        ? "logged invalid"
+        : "outside current limits";
+  const resultBadgeClass = isInvalid ? "warn" : "ok";
+  const segmentText = isFullAllClear
     ? `${result.totalSegments} ${logFileKind(result.logSource)} segment(s), earliest valid calibration in segment ${result.segment}`
+    : isQuick
+      ? `${result.segment} after scanning ${result.scannedSegments} ${logFileKind(result.logSource)} segment(s)`
     : `${result.segment} after scanning ${result.scannedSegments} ${logFileKind(result.logSource)} segment(s)`;
   const toleranceMarkup = renderToleranceVisualization(message, result.routeInfo, "Tolerance landing");
   const previousValidMarkup =
-    !isAllClear && result.previousValid
+    isInvalid && result.previousValid
       ? renderPreviousValid(result.previousValid, result.routeInfo)
-      : !isAllClear
+      : isInvalid
         ? `<section class="previous-valid"><h3>Previous valid calibration</h3><p class="muted">No valid calibration was seen before this invalid event in the scanned logs.</p></section>`
         : "";
 

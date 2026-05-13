@@ -136,6 +136,11 @@ button {
   color: #ffffff;
 }
 
+button.secondary {
+  background: #d9e3df;
+  color: #244540;
+}
+
 button:disabled,
 input:disabled {
   opacity: 0.65;
