@@ -57,6 +57,22 @@ https://connect.comma.ai/5beb9b58bd12b691/0000010a--a51155e496/90/105
 
 You can turn Public access off again after reading the route.
 
+## Scan modes
+
+The current app performs a full invalid-calibration scan: it scans uploaded qlogs
+first, falls back to rlogs only when qlogs are unavailable, and checks the route
+for invalid calibration.
+
+A useful next UI split would be:
+
+- **Quick look**: stop at the first valid calibration and show which device
+  tolerance bucket was used, plus the pitch/yaw landing visualization. This is
+  best for quickly checking where the mounted device calibration landed.
+- **Full scan**: scan the route for invalid calibration. If invalid calibration
+  appears, report the invalid message and the valid calibration immediately
+  before it when available. This is best for debugging routes where calibration
+  changed or went bad mid-drive.
+
 ## Current calibration tolerances
 
 As of the current openpilot `master` code checked on 2026-05-13, calibration is
