@@ -23,6 +23,7 @@ app.innerHTML = `
         <button class="scan-button" type="submit" name="scan-mode" value="quick">Quick look</button>
         <button class="scan-button secondary" type="submit" name="scan-mode" value="full">Full scan</button>
       </div>
+      <p class="form-hint">Quick look stops at the first valid calibration. Full scan checks the route for invalid calibration and shows the previous valid value when available.</p>
       <button class="ghost-button" id="demo-button" type="button">Use demo route</button>
     </form>
 
@@ -39,7 +40,7 @@ app.innerHTML = `
         <ol>
           <li>Open <a href="https://connect.comma.ai/" target="_blank" rel="noreferrer">comma Connect</a> and select the drive.</li>
           <li>Open <strong>More info</strong> and turn on <strong>Public access</strong>.</li>
-          <li>Use <strong>Files</strong> / upload controls to upload logs if they are missing.</li>
+          <li>The scanner only needs qlogs. Camera uploads are not needed; if qlogs are unavailable, rlogs can be used as a fallback.</li>
           <li>Copy either the browser URL or the route name. A current URL looks like <code>https://connect.comma.ai/&lt;dongle&gt;/&lt;route&gt;/&lt;start&gt;/&lt;end&gt;</code>.</li>
           <li>You can turn Public access off again after reading the route.</li>
         </ol>
