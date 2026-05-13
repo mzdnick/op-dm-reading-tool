@@ -26,6 +26,18 @@ Use these settings:
 
 No server-side function is required.
 
+## Deploy on GitHub Pages
+
+This repo includes a GitHub Actions workflow at `.github/workflows/pages.yml`.
+Pushes to `main` build the app and deploy `dist` to GitHub Pages.
+
+For the `ophwug/op-calibration-reading-tool` project page, the app is built
+with the Vite base path `/op-calibration-reading-tool/`, so the expected URL is:
+
+```text
+https://ophwug.github.io/op-calibration-reading-tool/
+```
+
 ## Getting a usable route
 
 1. Open [comma Connect](https://connect.comma.ai/) and select the drive.
