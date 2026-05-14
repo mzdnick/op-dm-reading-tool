@@ -474,3 +474,148 @@ footer {
     white-space: normal;
   }
 }
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color: #e6ece9;
+    background: #050807;
+  }
+
+  a,
+  .ghost-button {
+    color: #6ee7c5;
+  }
+
+  h1,
+  h2,
+  h3 {
+    color: #f4f7f5;
+  }
+
+  .eyebrow,
+  dt,
+  .form-hint,
+  .muted,
+  footer,
+  .qcamera-preview-header span,
+  .qcamera-frame p,
+  .tolerance-axis {
+    color: #b7c4bf;
+  }
+
+  .reader-form,
+  .status-panel,
+  .result-panel,
+  .info-grid article {
+    background: #080d0b;
+    border-color: #34403c;
+  }
+
+  input {
+    border-color: #52605b;
+    background: #030504;
+    color: #f4f7f5;
+  }
+
+  input::placeholder {
+    color: #8b9692;
+  }
+
+  button {
+    background: #6ee7c5;
+    color: #04100d;
+  }
+
+  button.secondary,
+  .source-link {
+    background: #17241f;
+    color: #d9f8ee;
+  }
+
+  .status-panel p,
+  .tolerance-hint {
+    color: #cbd5d1;
+  }
+
+  .progress-track {
+    background: #15201c;
+  }
+
+  #progress-bar {
+    background: #4ce0a0;
+  }
+
+  #progress-bar.error {
+    background: #ff8f75;
+  }
+
+  .badge.ok {
+    color: #d8fff1;
+    background: #123d2f;
+  }
+
+  .badge.warn {
+    color: #ffe2cb;
+    background: #4a2819;
+  }
+
+  .result-list div,
+  .limits div,
+  .previous-valid,
+  .qcamera-preview,
+  .tolerance-visual {
+    border-top-color: #2b3733;
+  }
+
+  .scan-warning {
+    border-color: #7c5230;
+    background: #26170f;
+  }
+
+  .qcamera-frame {
+    border-color: #34403c;
+    background: #0d1512;
+    color: #cbd5d1;
+  }
+
+  .qcamera-frame p {
+    border-top-color: #34403c;
+    background: #080d0b;
+  }
+
+  .qcamera-frame.unavailable {
+    background: #0b100e;
+    color: #b7c4bf;
+  }
+
+  .qcamera-preview-detail {
+    color: #98a6a1;
+  }
+
+  .inside {
+    color: #8ff0c8;
+  }
+
+  .outside {
+    color: #ff9f8f;
+  }
+
+  .tolerance-track {
+    background: linear-gradient(90deg, #12221d 0%, #215f4a 50%, #12221d 100%);
+    border-color: #50615b;
+  }
+
+  .tolerance-marker {
+    background: #dffff4;
+    border-color: #07100d;
+    box-shadow:
+      0 0 0 2px #9cf4d0,
+      0 0 0 6px rgb(156 244 208 / 0.22),
+      0 2px 8px rgb(0 0 0 / 0.75);
+  }
+
+  .tolerance-zero {
+    background: #9cf4d0;
+    box-shadow: 0 0 0 2px rgb(5 8 7 / 0.95);
+  }
+}
