@@ -19,7 +19,7 @@ app.innerHTML = `
       <label for="route-input">comma Connect URL or public route</label>
       <div class="input-row">
         <input id="route-input" name="route" autocomplete="off" spellcheck="false"
-          placeholder="Paste Connect URL here, e.g. https://connect.comma.ai/<dongle>/<route>/<start>/<end>" />
+          placeholder="Paste Connect URL here, e.g. https://connect.comma.ai/<dongle>/<route>" />
         <button class="scan-button" type="submit" name="scan-mode" value="quick">Quick look</button>
         <button class="scan-button secondary" type="submit" name="scan-mode" value="full">Full scan</button>
       </div>
@@ -40,7 +40,7 @@ app.innerHTML = `
         <ol>
           <li>Open <a href="https://connect.comma.ai/" target="_blank" rel="noreferrer">comma Connect</a> and select the drive.</li>
           <li>Open <strong>More info</strong> and turn on <strong>Public access</strong>.</li>
-          <li>Copy either the browser URL or the route name. A current URL looks like <code>https://connect.comma.ai/&lt;dongle&gt;/&lt;route&gt;/&lt;start&gt;/&lt;end&gt;</code>.</li>
+          <li>Copy either the browser URL or the route name. A current URL looks like <code>https://connect.comma.ai/&lt;dongle&gt;/&lt;route&gt;</code>. If clip start/end seconds are included after the route, they are ignored.</li>
           <li>You can turn Public access off again after reading the route.</li>
         </ol>
       </article>
@@ -81,7 +81,7 @@ const resultPanel = document.querySelector<HTMLElement>("#result-panel")!;
 let renderGeneration = 0;
 
 demoButton.addEventListener("click", () => {
-  input.value = "https://connect.comma.ai/5beb9b58bd12b691/0000010a--a51155e496/90/105";
+  input.value = "https://connect.comma.ai/5beb9b58bd12b691/0000010a--a51155e496";
   input.focus();
 });
 

@@ -10,7 +10,14 @@ describe("route parsing", () => {
     });
   });
 
-  it("accepts comma Connect URLs with clip times", () => {
+  it("accepts comma Connect URLs", () => {
+    expect(parseRouteInput("https://connect.comma.ai/5beb9b58bd12b691/0000010a--a51155e496")).toMatchObject({
+      routeName: "5beb9b58bd12b691|0000010a--a51155e496",
+      source: "connect-url",
+    });
+  });
+
+  it("strips dragged-along clip times from comma Connect URLs", () => {
     expect(parseRouteInput("https://connect.comma.ai/5beb9b58bd12b691/0000010a--a51155e496/90/105")).toMatchObject({
       routeName: "5beb9b58bd12b691|0000010a--a51155e496",
       source: "connect-url",
