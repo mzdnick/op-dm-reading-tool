@@ -19,7 +19,7 @@ app.innerHTML = `
       <label for="route-input">comma Connect URL or public route</label>
       <div class="input-row">
         <input id="route-input" name="route" autocomplete="off" spellcheck="false"
-          placeholder="https://connect.comma.ai/5beb9b58bd12b691/0000010a--a51155e496/90/105" />
+          placeholder="Paste Connect URL here, e.g. https://connect.comma.ai/<dongle>/<route>/<start>/<end>" />
         <button class="scan-button" type="submit" name="scan-mode" value="quick">Quick look</button>
         <button class="scan-button secondary" type="submit" name="scan-mode" value="full">Full scan</button>
       </div>
