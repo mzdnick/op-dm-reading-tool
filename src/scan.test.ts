@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CalibrationMessage } from "./capnp";
+import { findDeviceType } from "./capnp";
 import { decompressLog } from "./decompress";
 import { scanRouteForInvalidCalibration } from "./scan";
 
@@ -11,6 +12,7 @@ vi.mock("./decompress", () => ({
 }));
 
 vi.mock("./capnp", () => ({
+  findDeviceType: vi.fn(() => "mici"),
   findCalibrationMessages: vi.fn(() => [
     {
       logMonoTime: 1n,
@@ -59,6 +61,8 @@ describe("full route scan", () => {
         message: "unexpected EOF while decompressing; this log segment looks truncated",
       },
     ]);
+    expect(result.routeInfo?.deviceType).toBe("mici");
+    expect(findDeviceType).toHaveBeenCalledTimes(1);
     expect(decompressLog).toHaveBeenCalledTimes(2);
   });
 });

@@ -18,6 +18,7 @@ export interface RouteFiles {
 
 export interface RouteInfo {
   fullname: string;
+  deviceType?: string;
   dongle_id?: string;
   dongleId?: string;
   devicetype?: number;

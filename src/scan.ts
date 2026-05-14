@@ -1,4 +1,4 @@
-import { findCalibrationMessages, type CalibrationMessage } from "./capnp";
+import { findCalibrationMessages, findDeviceType, type CalibrationMessage, type DeviceType } from "./capnp";
 import { decompressLog } from "./decompress";
 import { isInvalidCalibration } from "./format";
 import { fetchRouteFiles, fetchRouteInfo, logSourceLabel, orderedLogUrls, parseRouteInput, segmentFromUrl, type RouteInfo } from "./routes";
@@ -45,6 +45,11 @@ interface RouteLogContext {
   source: "qlogs" | "rlogs";
 }
 
+interface LogSegmentScan {
+  calibrationMessages: CalibrationMessage[];
+  deviceType: DeviceType | null;
+}
+
 export async function scanRouteForFirstValidCalibration(
   input: string,
   onProgress: (progress: ScanProgress) => void,
@@ -54,7 +59,8 @@ export async function scanRouteForFirstValidCalibration(
   for (let index = 0; index < context.logUrls.length; index += 1) {
     const logUrl = context.logUrls[index];
     const segment = segmentFromUrl(logUrl);
-    const calibrationMessages = await downloadCalibrationMessages(logUrl, segment, index, context.logUrls.length, context.source, onProgress);
+    const { calibrationMessages, deviceType } = await downloadLogSegmentScan(logUrl, segment, index, context.logUrls.length, context.source, onProgress);
+    context.routeInfo = routeInfoWithDeviceType(context.routeInfo, context.routeName, deviceType);
     const message = calibrationMessages.find((calibration) => calibration.status === 1 && calibration.rpyCalib.length === 3);
     if (message) {
       onProgress({ phase: "done", message: `Found valid calibration in segment ${segment}` });
@@ -94,7 +100,9 @@ export async function scanRouteForInvalidCalibration(
     const segment = segmentFromUrl(logUrl);
     let calibrationMessages: CalibrationMessage[];
     try {
-      calibrationMessages = await downloadCalibrationMessages(logUrl, segment, index, context.logUrls.length, context.source, onProgress);
+      const segmentScan = await downloadLogSegmentScan(logUrl, segment, index, context.logUrls.length, context.source, onProgress);
+      calibrationMessages = segmentScan.calibrationMessages;
+      context.routeInfo = routeInfoWithDeviceType(context.routeInfo, context.routeName, segmentScan.deviceType);
       decodedSegments += 1;
     } catch (error) {
       const failure = { logUrl, segment, message: readableLogError(error) };
@@ -195,14 +203,14 @@ async function loadRouteLogContext(
   return { routeName: parsed.routeName, routeInfo, logUrls, source };
 }
 
-async function downloadCalibrationMessages(
+async function downloadLogSegmentScan(
   logUrl: string,
   segment: number,
   index: number,
   total: number,
   source: "qlogs" | "rlogs",
   onProgress: (progress: ScanProgress) => void,
-): Promise<CalibrationMessage[]> {
+): Promise<LogSegmentScan> {
   onProgress({
     phase: "download",
     message: `Downloading ${logFileKind(source)} segment ${segment} (${index + 1}/${total})`,
@@ -219,7 +227,10 @@ async function downloadCalibrationMessages(
   });
 
   const decompressed = decompressLog(compressed, logUrl);
-  return findCalibrationMessages(decompressed, (calibration) => calibration.rpyCalib.length === 3);
+  return {
+    calibrationMessages: findCalibrationMessages(decompressed, (calibration) => calibration.rpyCalib.length === 3),
+    deviceType: findDeviceType(decompressed),
+  };
 }
 
 async function fetchLog(logUrl: string): Promise<Response> {
@@ -240,4 +251,14 @@ function readableLogError(error: unknown): string {
     return "unexpected EOF while decompressing; this log segment looks truncated";
   }
   return message;
+}
+
+function routeInfoWithDeviceType(routeInfo: RouteInfo | null, routeName: string, deviceType: DeviceType | null): RouteInfo | null {
+  if (!deviceType || deviceType === "unknown" || routeInfo?.deviceType === deviceType) return routeInfo;
+  return {
+    fullname: routeInfo?.fullname ?? routeName,
+    ...routeInfo,
+    deviceType,
+    devicetype: deviceType === "mici" ? 7 : routeInfo?.devicetype,
+  };
 }

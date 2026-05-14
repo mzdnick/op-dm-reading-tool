@@ -19,7 +19,7 @@ export function formatLogMonoTime(value: bigint): string {
 }
 
 export function deviceLimitKey(routeInfo: RouteInfo | null): keyof typeof CALIBRATION_LIMITS {
-  return routeInfo?.devicetype === 7 ? "mici" : "default";
+  return routeInfo?.deviceType === "mici" || routeInfo?.devicetype === 7 ? "mici" : "default";
 }
 
 export function yawDirection(yaw: number): string {

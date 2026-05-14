@@ -18,6 +18,8 @@ export interface CalibrationMessage {
   height: number[];
 }
 
+export type DeviceType = "unknown" | "neo" | "chffrAndroid" | "chffrIos" | "tici" | "pc" | "tizi" | "mici";
+
 interface StructRef {
   segment: SegmentData;
   dataOffset: number;
@@ -36,6 +38,10 @@ interface ListRef {
 const WORD_SIZE = 8;
 const EVENT_UNION_TAG_BYTE_OFFSET = 8;
 const EVENT_POINTER_FIELD_0 = 0;
+const INIT_DATA_UNION_TAG = 0;
+const DEVICE_STATE_UNION_TAG = 5;
+const INIT_DATA_DEVICE_TYPE_BYTE_OFFSET = 0;
+const DEVICE_STATE_DEVICE_TYPE_BYTE_OFFSET = 82;
 const LIVE_CALIBRATION_STATUS_BYTE_OFFSET = 2;
 const LIVE_CALIBRATION_CAL_PERC_BYTE_OFFSET = 1;
 const LIVE_CALIBRATION_VALID_BLOCKS_BYTE_OFFSET = 8;
@@ -46,6 +52,17 @@ const LIVE_CALIBRATION_POINTER_FIELDS = {
   wideFromDeviceEuler: 6,
   height: 7,
 } as const;
+
+const DEVICE_TYPES: Record<number, DeviceType> = {
+  0: "unknown",
+  1: "neo",
+  2: "chffrAndroid",
+  3: "chffrIos",
+  4: "tici",
+  5: "pc",
+  6: "tizi",
+  7: "mici",
+};
 
 export function* readMessages(bytes: Uint8Array): Generator<SegmentData[]> {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -100,6 +117,14 @@ export function findCalibrationMessages(
   return messages;
 }
 
+export function findDeviceType(bytes: Uint8Array): DeviceType | null {
+  for (const segments of readMessages(bytes)) {
+    const deviceType = readDeviceTypeMessage(segments);
+    if (deviceType && deviceType !== "unknown") return deviceType;
+  }
+  return null;
+}
+
 export function readLiveCalibrationMessage(segments: SegmentData[]): CalibrationMessage | null {
   if (segments.length === 0) return null;
   const root = readStructPointer(segments, 0, segments[0].offset);
@@ -123,6 +148,24 @@ export function readLiveCalibrationMessage(segments: SegmentData[]): Calibration
     wideFromDeviceEuler: readFloat32List(liveCalibration, LIVE_CALIBRATION_POINTER_FIELDS.wideFromDeviceEuler),
     height: readFloat32List(liveCalibration, LIVE_CALIBRATION_POINTER_FIELDS.height),
   };
+}
+
+function readDeviceTypeMessage(segments: SegmentData[]): DeviceType | null {
+  if (segments.length === 0) return null;
+  const root = readStructPointer(segments, 0, segments[0].offset);
+  if (!root) return null;
+
+  const unionTag = getUint16(root, EVENT_UNION_TAG_BYTE_OFFSET);
+  if (unionTag !== INIT_DATA_UNION_TAG && unionTag !== DEVICE_STATE_UNION_TAG) return null;
+
+  const eventPayload = readStructPointer(segments, root.segmentIndex, pointerFieldOffset(root, EVENT_POINTER_FIELD_0));
+  if (!eventPayload) return null;
+
+  const rawDeviceType =
+    unionTag === INIT_DATA_UNION_TAG
+      ? getUint16(eventPayload, INIT_DATA_DEVICE_TYPE_BYTE_OFFSET)
+      : getUint16(eventPayload, DEVICE_STATE_DEVICE_TYPE_BYTE_OFFSET);
+  return DEVICE_TYPES[rawDeviceType] ?? "unknown";
 }
 
 function pointerFieldOffset(ref: StructRef & { segmentIndex: number }, pointerIndex: number): number {
