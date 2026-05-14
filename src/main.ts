@@ -214,10 +214,11 @@ function renderToleranceVisualization(message: NonNullable<CalibrationScanResult
     <section class="tolerance-visual">
       <h3>${title}</h3>
       ${renderToleranceRow("Pitch", message.rpyCalib[1], limits.pitchMinRad, limits.pitchMaxRad, {
-        minLabel: `${formatDegrees(limits.pitchMinRad)} up`,
+        minLabel: `${formatDegrees(limits.pitchMaxRad)} down`,
         zeroLabel: "0° level",
-        maxLabel: `${formatDegrees(limits.pitchMaxRad)} down`,
+        maxLabel: `${formatDegrees(limits.pitchMinRad)} up`,
         hint: adjustmentHint(message.rpyCalib[1], "pitch"),
+        reverseAxis: true,
       })}
       ${renderToleranceRow("Yaw", message.rpyCalib[2], limits.yawMinRad, limits.yawMaxRad, {
         minLabel: `${formatDegrees(limits.yawMaxRad)} left`,
