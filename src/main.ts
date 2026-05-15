@@ -1,6 +1,6 @@
 import "./styles.css";
 import { completeAuthCallback, getOAuthProviders, isSignedIn, oauthRedirectNote, setAccessToken, signOut } from "./auth";
-import { CALIBRATION_LIMITS, GITHUB_REPO_URL, OPENPILOT_MASTER_SOURCES } from "./constants";
+import { CALIBRATION_LIMITS, COMMA_JWT_PORTAL_URL, GITHUB_REPO_URL, OPENPILOT_MASTER_SOURCES } from "./constants";
 import { formatAngle, formatDegrees, formatLogMonoTime, pitchDirection, yawDirection, deviceLimitKey } from "./format";
 import { scanRouteForFirstValidCalibration, scanRouteForInvalidCalibration, type CalibrationScanResult } from "./scan";
 
@@ -181,7 +181,13 @@ function renderAuthPanel(): void {
       <p class="muted">Public routes do not need sign-in. Sign in to try routes your comma account can access; the token stays in this browser's local storage.</p>
       ${authOptions}
       <details class="token-details">
-        <summary>Paste a comma JWT instead</summary>
+        <summary>Use a JWT from jwt.comma.ai</summary>
+        <ol class="jwt-steps">
+          <li>Open <a href="${COMMA_JWT_PORTAL_URL}" target="_blank" rel="noreferrer">jwt.comma.ai</a> and sign in with the same comma account.</li>
+          <li>Copy the value shown in the <strong>JWT</strong> field.</li>
+          <li>Paste it here, then scan the route.</li>
+        </ol>
+        <p class="token-note">Treat the JWT like a password. This tool stores it only in this browser's local storage.</p>
         <div class="token-row">
           <input id="token-input" type="password" autocomplete="off" spellcheck="false" placeholder="Paste JWT token here" />
           <button class="secondary" id="save-token-button" type="button">Use token</button>

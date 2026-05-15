@@ -1,5 +1,6 @@
 export const API_BASE_URL = "https://api.comma.ai";
 export const GITHUB_REPO_URL = "https://github.com/ophwug/op-calibration-reading-tool";
+export const COMMA_JWT_PORTAL_URL = "https://jwt.comma.ai/";
 
 export const OPENPILOT_MASTER_SOURCES = {
   calibrationd:
