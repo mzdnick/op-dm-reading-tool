@@ -65,7 +65,7 @@ describe("comma auth token storage", () => {
     expect(providers[0].url).not.toContain("state=service%2C&");
   });
 
-  it("builds OAuth links for custom domains with host-only service", () => {
+  it("hides OAuth links for custom domains rejected by comma", () => {
     vi.stubGlobal("window", {
       location: {
         protocol: "https:",
@@ -74,10 +74,23 @@ describe("comma auth token storage", () => {
       },
     });
 
+    expect(getOAuthProviders()).toEqual([]);
+    expect(oauthRedirectNote()).toContain("rejects this domain");
+  });
+
+  it("builds OAuth links for comma Connect Pages hosts", () => {
+    vi.stubGlobal("window", {
+      location: {
+        protocol: "https:",
+        hostname: "new-connect.connect-d5y.pages.dev",
+        host: "new-connect.connect-d5y.pages.dev",
+      },
+    });
+
     const providers = getOAuthProviders();
 
     expect(providers).toHaveLength(3);
-    expect(providers[0].url).toContain("state=service%2Copcal.mindflakes.com");
+    expect(providers[0].url).toContain("state=service%2Cnew-connect.connect-d5y.pages.dev");
     expect(providers[0].url).not.toContain("op-calibration-reading-tool");
   });
 });

@@ -1,6 +1,7 @@
 import { API_BASE_URL } from "./constants";
 
 const AUTH_STORAGE_KEY = "ai.comma.api.authorization";
+const LOCAL_OAUTH_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 interface OAuthProvider {
   label: string;
@@ -43,7 +44,7 @@ export function authHeaders(): HeadersInit {
 
 export function getOAuthProviders(): OAuthProvider[] {
   const service = getOAuthService();
-  if (!service) return [];
+  if (!service || !canUseOAuthRedirect(service)) return [];
   return [
     {
       label: "Google",
@@ -81,8 +82,12 @@ export function getOAuthProviders(): OAuthProvider[] {
 }
 
 export function oauthRedirectNote(): string {
-  if (getOAuthService()) return "";
-  return "OAuth sign-in needs the app to be served over http or https. Public routes still work; for private routes, paste a comma JWT below.";
+  const service = getOAuthService();
+  if (service && canUseOAuthRedirect(service)) return "";
+  if (!service) {
+    return "OAuth sign-in needs the app to be served over http or https. Public routes still work; for private routes, paste a comma JWT below.";
+  }
+  return "OAuth sign-in is disabled here because comma's auth redirect accepts localhost and comma Connect hosts, but rejects this domain. Public routes still work; for private routes, paste a comma JWT below.";
 }
 
 export async function completeAuthCallback(): Promise<AuthCallbackResult> {
@@ -128,6 +133,11 @@ function getOAuthService(): string | null {
   if (!["http:", "https:"].includes(window.location.protocol)) return null;
   if (!window.location.host) return null;
   return window.location.host;
+}
+
+function canUseOAuthRedirect(service: string): boolean {
+  const hostname = service.split(":", 1)[0];
+  return LOCAL_OAUTH_HOSTNAMES.has(hostname) || hostname === "connect.comma.ai" || hostname.endsWith(".connect-d5y.pages.dev");
 }
 
 function normalizeAccessToken(token: string | null): string | null {
