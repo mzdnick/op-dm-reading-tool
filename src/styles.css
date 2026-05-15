@@ -93,6 +93,7 @@ button {
 }
 
 .reader-form,
+.auth-panel,
 .status-panel,
 .result-panel,
 .info-grid article {
@@ -103,6 +104,66 @@ button {
 
 .reader-form {
   padding: 18px;
+}
+
+.auth-panel {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-top: 14px;
+  padding: 16px 18px;
+}
+
+.auth-panel h2 {
+  font-size: 1rem;
+}
+
+.auth-panel h2 span {
+  color: #5b6d69;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.auth-panel p {
+  max-width: 780px;
+  margin: 6px 0 0;
+}
+
+.auth-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.auth-link {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #e4ece8;
+  color: #16413d;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.token-details {
+  margin-top: 12px;
+}
+
+.token-details summary {
+  cursor: pointer;
+  color: #11635a;
+  font-weight: 800;
+}
+
+.token-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-top: 10px;
 }
 
 label {
@@ -453,7 +514,9 @@ footer {
 
   .masthead,
   .result-header,
+  .auth-panel,
   .input-row,
+  .token-row,
   .info-grid,
   .result-list div,
   .limits div {
@@ -504,6 +567,7 @@ footer {
   }
 
   .reader-form,
+  .auth-panel,
   .status-panel,
   .result-panel,
   .info-grid article {
@@ -527,9 +591,18 @@ footer {
   }
 
   button.secondary,
-  .source-link {
+  .source-link,
+  .auth-link {
     background: #17241f;
     color: #d9f8ee;
+  }
+
+  .auth-panel h2 span {
+    color: #b7c4bf;
+  }
+
+  .token-details summary {
+    color: #6ee7c5;
   }
 
   .status-panel p,

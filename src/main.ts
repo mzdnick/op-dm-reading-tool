@@ -1,4 +1,5 @@
 import "./styles.css";
+import { completeAuthCallback, getOAuthProviders, isSignedIn, setAccessToken, signOut } from "./auth";
 import { CALIBRATION_LIMITS, GITHUB_REPO_URL, OPENPILOT_MASTER_SOURCES } from "./constants";
 import { formatAngle, formatDegrees, formatLogMonoTime, pitchDirection, yawDirection, deviceLimitKey } from "./format";
 import { scanRouteForFirstValidCalibration, scanRouteForInvalidCalibration, type CalibrationScanResult } from "./scan";
@@ -26,6 +27,8 @@ app.innerHTML = `
       <p class="form-hint">Quick look stops at the first valid calibration. Full scan checks the route for invalid calibration and shows the previous valid value when available.</p>
       <button class="ghost-button" id="demo-button" type="button">Use demo route</button>
     </form>
+
+    <section class="auth-panel" id="auth-panel"></section>
 
     <section class="status-panel" id="status-panel" aria-live="polite">
       <div class="progress-track"><div id="progress-bar"></div></div>
@@ -78,11 +81,36 @@ const demoButton = document.querySelector<HTMLButtonElement>("#demo-button")!;
 const statusText = document.querySelector<HTMLParagraphElement>("#status-text")!;
 const progressBar = document.querySelector<HTMLDivElement>("#progress-bar")!;
 const resultPanel = document.querySelector<HTMLElement>("#result-panel")!;
+const authPanel = document.querySelector<HTMLElement>("#auth-panel")!;
 let renderGeneration = 0;
+
+renderAuthPanel();
+void completePendingAuth();
 
 demoButton.addEventListener("click", () => {
   input.value = "https://connect.comma.ai/5beb9b58bd12b691/0000010a--a51155e496";
   input.focus();
+});
+
+authPanel.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+
+  if (target.closest("#sign-out-button")) {
+    signOut();
+    renderAuthPanel();
+    statusText.textContent = "Signed out. Public route scanning still works.";
+    return;
+  }
+
+  if (target.closest("#save-token-button")) {
+    const tokenInput = document.querySelector<HTMLInputElement>("#token-input");
+    setAccessToken(tokenInput?.value ?? null);
+    renderAuthPanel();
+    statusText.textContent = isSignedIn()
+      ? "Saved comma token locally in this browser."
+      : "No token was saved.";
+  }
 });
 
 form.addEventListener("submit", async (event) => {
@@ -127,6 +155,55 @@ function clearResult(): void {
   renderGeneration += 1;
   resultPanel.hidden = true;
   resultPanel.innerHTML = "";
+}
+
+function renderAuthPanel(): void {
+  if (isSignedIn()) {
+    authPanel.innerHTML = `
+      <div>
+        <h2>comma sign-in</h2>
+        <p class="muted">Signed in with a comma token stored locally in this browser. Private routes may work if this account can access them.</p>
+      </div>
+      <button class="secondary" id="sign-out-button" type="button">Sign out</button>
+    `;
+    return;
+  }
+
+  const links = getOAuthProviders()
+    .map((provider) => `<a class="auth-link" href="${escapeHtml(provider.url)}">${provider.label}</a>`)
+    .join("");
+  authPanel.innerHTML = `
+    <div>
+      <h2>comma sign-in <span>optional experiment</span></h2>
+      <p class="muted">Public routes do not need sign-in. Sign in to try routes your comma account can access; the token stays in this browser's local storage.</p>
+      <div class="auth-links">${links}</div>
+      <details class="token-details">
+        <summary>Paste a comma JWT instead</summary>
+        <div class="token-row">
+          <input id="token-input" type="password" autocomplete="off" spellcheck="false" placeholder="Paste JWT token here" />
+          <button class="secondary" id="save-token-button" type="button">Use token</button>
+        </div>
+      </details>
+    </div>
+  `;
+}
+
+async function completePendingAuth(): Promise<void> {
+  const authParams = new URLSearchParams(window.location.search);
+  if (!authParams.has("code") || !authParams.has("provider")) return;
+  statusText.textContent = "Completing comma sign-in...";
+  progressBar.style.width = "8%";
+  const result = await completeAuthCallback();
+  progressBar.style.width = "100%";
+  renderAuthPanel();
+  if (!result.handled) return;
+  if (result.error) {
+    progressBar.classList.add("error");
+    statusText.textContent = result.error;
+  } else {
+    progressBar.classList.remove("error");
+    statusText.textContent = "Signed in with comma. Paste a route and scan when ready.";
+  }
 }
 
 function renderResult(result: CalibrationScanResult): void {

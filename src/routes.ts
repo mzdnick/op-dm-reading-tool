@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "./constants";
+import { authHeaders, isSignedIn } from "./auth";
 
 export interface ParsedRouteInput {
   routeName: string;
@@ -66,17 +67,22 @@ export function parseRouteInput(input: string): ParsedRouteInput {
 }
 
 export async function fetchRouteFiles(routeName: string): Promise<RouteFiles> {
-  const response = await fetch(`${API_BASE_URL}/v1/route/${encodeURIComponent(routeName)}/files`);
+  const response = await fetch(`${API_BASE_URL}/v1/route/${encodeURIComponent(routeName)}/files`, {
+    headers: authHeaders(),
+  });
   if (!response.ok) {
+    const accessHint = isSignedIn() ? " Your comma sign-in may not have access to this route." : " Make sure the route is public, or try signing in with comma.";
     throw new Error(
-      `Could not read route files (${response.status}). Make sure the route is public and its logs are uploaded.`,
+      `Could not read route files (${response.status}).${accessHint} Make sure its logs are uploaded.`,
     );
   }
   return response.json();
 }
 
 export async function fetchRouteInfo(routeName: string): Promise<RouteInfo | null> {
-  const response = await fetch(`${API_BASE_URL}/v1/route/${encodeURIComponent(routeName)}/`);
+  const response = await fetch(`${API_BASE_URL}/v1/route/${encodeURIComponent(routeName)}/`, {
+    headers: authHeaders(),
+  });
   if (!response.ok) return null;
   return response.json();
 }
