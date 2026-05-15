@@ -1,5 +1,5 @@
 import "./styles.css";
-import { completeAuthCallback, getOAuthProviders, isSignedIn, setAccessToken, signOut } from "./auth";
+import { completeAuthCallback, getOAuthProviders, isSignedIn, oauthRedirectNote, setAccessToken, signOut } from "./auth";
 import { CALIBRATION_LIMITS, GITHUB_REPO_URL, OPENPILOT_MASTER_SOURCES } from "./constants";
 import { formatAngle, formatDegrees, formatLogMonoTime, pitchDirection, yawDirection, deviceLimitKey } from "./format";
 import { scanRouteForFirstValidCalibration, scanRouteForInvalidCalibration, type CalibrationScanResult } from "./scan";
@@ -169,14 +169,17 @@ function renderAuthPanel(): void {
     return;
   }
 
-  const links = getOAuthProviders()
-    .map((provider) => `<a class="auth-link" href="${escapeHtml(provider.url)}">${provider.label}</a>`)
-    .join("");
+  const providers = getOAuthProviders();
+  const authOptions = providers.length
+    ? `<div class="auth-links">${providers
+      .map((provider) => `<a class="auth-link" href="${escapeHtml(provider.url)}">${provider.label}</a>`)
+      .join("")}</div>`
+    : `<p class="auth-warning">${escapeHtml(oauthRedirectNote())}</p>`;
   authPanel.innerHTML = `
     <div>
       <h2>comma sign-in <span>optional experiment</span></h2>
       <p class="muted">Public routes do not need sign-in. Sign in to try routes your comma account can access; the token stays in this browser's local storage.</p>
-      <div class="auth-links">${links}</div>
+      ${authOptions}
       <details class="token-details">
         <summary>Paste a comma JWT instead</summary>
         <div class="token-row">

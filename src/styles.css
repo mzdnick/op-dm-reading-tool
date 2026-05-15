@@ -149,6 +149,17 @@ button {
   text-decoration: none;
 }
 
+.auth-warning {
+  width: fit-content;
+  max-width: 780px;
+  border: 1px solid #d6c7a1;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fff7df;
+  color: #5e4a17;
+  font-weight: 700;
+}
+
 .token-details {
   margin-top: 12px;
 }
@@ -599,6 +610,12 @@ footer {
 
   .auth-panel h2 span {
     color: #b7c4bf;
+  }
+
+  .auth-warning {
+    border-color: #6a5b33;
+    background: #221d0f;
+    color: #f0dfaa;
   }
 
   .token-details summary {

@@ -42,6 +42,7 @@ export function authHeaders(): HeadersInit {
 }
 
 export function getOAuthProviders(): OAuthProvider[] {
+  if (!canUseOAuthRedirect()) return [];
   const service = getService();
   return [
     {
@@ -77,6 +78,11 @@ export function getOAuthProviders(): OAuthProvider[] {
       }),
     },
   ];
+}
+
+export function oauthRedirectNote(): string {
+  if (canUseOAuthRedirect()) return "";
+  return "OAuth sign-in is disabled here because comma rejects this domain as an auth redirect target. Public routes still work; for private routes, paste a comma JWT below.";
 }
 
 export async function completeAuthCallback(): Promise<AuthCallbackResult> {
@@ -120,6 +126,10 @@ async function refreshAccessToken(code: string, provider: string): Promise<void>
 function getService(): string {
   const basePath = import.meta.env.BASE_URL === "/" ? "" : import.meta.env.BASE_URL.replace(/\/$/, "");
   return `${window.location.host}${basePath}`;
+}
+
+function canUseOAuthRedirect(): boolean {
+  return ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
 }
 
 function normalizeAccessToken(token: string | null): string | null {
