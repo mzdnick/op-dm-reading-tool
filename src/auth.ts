@@ -1,7 +1,6 @@
 import { API_BASE_URL } from "./constants";
 
 const AUTH_STORAGE_KEY = "ai.comma.api.authorization";
-const LOCAL_OAUTH_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 interface OAuthProvider {
   label: string;
@@ -44,7 +43,7 @@ export function authHeaders(): HeadersInit {
 
 export function getOAuthProviders(): OAuthProvider[] {
   const service = getOAuthService();
-  if (!service || !canUseOAuthRedirect()) return [];
+  if (!service) return [];
   return [
     {
       label: "Google",
@@ -82,11 +81,8 @@ export function getOAuthProviders(): OAuthProvider[] {
 }
 
 export function oauthRedirectNote(): string {
-  if (canUseOAuthRedirect()) return "";
-  if (!getOAuthService()) {
-    return "OAuth sign-in needs the app to be running from localhost. Public routes still work; for private routes, paste a comma JWT below.";
-  }
-  return "OAuth sign-in is disabled here because comma rejects this domain as an auth redirect target. Public routes still work; for private routes, paste a comma JWT below.";
+  if (getOAuthService()) return "";
+  return "OAuth sign-in needs the app to be served over http or https. Public routes still work; for private routes, paste a comma JWT below.";
 }
 
 export async function completeAuthCallback(): Promise<AuthCallbackResult> {
@@ -129,15 +125,9 @@ async function refreshAccessToken(code: string, provider: string): Promise<void>
 
 function getOAuthService(): string | null {
   if (typeof window === "undefined") return null;
+  if (!["http:", "https:"].includes(window.location.protocol)) return null;
   if (!window.location.host) return null;
-  const basePath = import.meta.env.BASE_URL === "/" ? "" : import.meta.env.BASE_URL.replace(/\/$/, "");
-  return `${window.location.host}${basePath}`;
-}
-
-function canUseOAuthRedirect(): boolean {
-  if (typeof window === "undefined") return false;
-  if (!["http:", "https:"].includes(window.location.protocol)) return false;
-  return !!getOAuthService() && LOCAL_OAUTH_HOSTNAMES.has(window.location.hostname);
+  return window.location.host;
 }
 
 function normalizeAccessToken(token: string | null): string | null {

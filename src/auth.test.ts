@@ -46,7 +46,7 @@ describe("comma auth token storage", () => {
     });
 
     expect(getOAuthProviders()).toEqual([]);
-    expect(oauthRedirectNote()).toContain("localhost");
+    expect(oauthRedirectNote()).toContain("http or https");
   });
 
   it("builds OAuth links for localhost with a non-empty service", () => {
@@ -63,5 +63,21 @@ describe("comma auth token storage", () => {
     expect(providers).toHaveLength(3);
     expect(providers[0].url).toContain("state=service%2Clocalhost%3A5173");
     expect(providers[0].url).not.toContain("state=service%2C&");
+  });
+
+  it("builds OAuth links for custom domains with host-only service", () => {
+    vi.stubGlobal("window", {
+      location: {
+        protocol: "https:",
+        hostname: "opcal.mindflakes.com",
+        host: "opcal.mindflakes.com",
+      },
+    });
+
+    const providers = getOAuthProviders();
+
+    expect(providers).toHaveLength(3);
+    expect(providers[0].url).toContain("state=service%2Copcal.mindflakes.com");
+    expect(providers[0].url).not.toContain("op-calibration-reading-tool");
   });
 });
