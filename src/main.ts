@@ -1,5 +1,5 @@
 import "./styles.css";
-import { completeAuthCallback, getOAuthProviders, isSignedIn, oauthRedirectNote, setAccessToken, signOut } from "./auth";
+import { completeAuthCallback, isSignedIn, setAccessToken, signOut } from "./auth";
 import { CALIBRATION_LIMITS, COMMA_JWT_PORTAL_URL, GITHUB_REPO_URL, OPENPILOT_MASTER_SOURCES } from "./constants";
 import { formatAngle, formatDegrees, formatLogMonoTime, pitchDirection, yawDirection, deviceLimitKey } from "./format";
 import { scanRouteForFirstValidCalibration, scanRouteForInvalidCalibration, type CalibrationScanResult } from "./scan";
@@ -28,8 +28,6 @@ app.innerHTML = `
       <button class="ghost-button" id="demo-button" type="button">Use demo route</button>
     </form>
 
-    <section class="auth-panel" id="auth-panel"></section>
-
     <section class="status-panel" id="status-panel" aria-live="polite">
       <div class="progress-track"><div id="progress-bar"></div></div>
       <p id="status-text">Paste a public route for a quick calibration look, or run a full qlog scan for invalid calibration.</p>
@@ -46,6 +44,7 @@ app.innerHTML = `
           <li>Copy either the browser URL or the route name. A current URL looks like <code>https://connect.comma.ai/&lt;dongle&gt;/&lt;route&gt;</code>. If clip start/end seconds are included after the route, they are ignored.</li>
           <li>You can turn Public access off again after reading the route.</li>
         </ol>
+        <div class="jwt-option" id="auth-panel"></div>
       </article>
       <article>
         <h2>Current tolerated values</h2>
@@ -108,8 +107,8 @@ authPanel.addEventListener("click", (event) => {
     setAccessToken(tokenInput?.value ?? null);
     renderAuthPanel();
     statusText.textContent = isSignedIn()
-      ? "Saved comma token locally in this browser."
-      : "No token was saved.";
+      ? "Saved JWT in this browser."
+      : "No JWT was saved.";
   }
 });
 
@@ -160,39 +159,24 @@ function clearResult(): void {
 function renderAuthPanel(): void {
   if (isSignedIn()) {
     authPanel.innerHTML = `
-      <div>
-        <h2>JWT</h2>
-        <p class="muted">JWT saved in this browser.</p>
-      </div>
-      <button class="secondary" id="sign-out-button" type="button">Sign out</button>
+      <p class="jwt-saved">JWT saved. <button class="link-button" id="sign-out-button" type="button">Remove</button></p>
     `;
     return;
   }
 
-  const providers = getOAuthProviders();
-  const authOptions = providers.length
-    ? `<div class="auth-links">${providers
-      .map((provider) => `<a class="auth-link" href="${escapeHtml(provider.url)}">${provider.label}</a>`)
-      .join("")}</div>`
-    : `<p class="auth-warning">${escapeHtml(oauthRedirectNote())}</p>`;
   authPanel.innerHTML = `
-    <div>
-      <h2>JWT</h2>
-      <p class="muted">Public routes do not need a JWT. Private routes do.</p>
-      ${authOptions}
-      <details class="token-details">
-        <summary>Use jwt.comma.ai</summary>
-        <ol class="jwt-steps">
-          <li>Open <a href="${COMMA_JWT_PORTAL_URL}" target="_blank" rel="noreferrer">jwt.comma.ai</a>.</li>
-          <li>Copy the JWT.</li>
-          <li>Paste it here.</li>
-        </ol>
-        <div class="token-row">
-          <input id="token-input" type="password" autocomplete="off" spellcheck="false" placeholder="Paste JWT here" />
-          <button class="secondary" id="save-token-button" type="button">Use JWT</button>
-        </div>
-      </details>
-    </div>
+    <details class="token-details">
+      <summary>Private route? Use a JWT</summary>
+      <ol class="jwt-steps">
+        <li>Open <a href="${COMMA_JWT_PORTAL_URL}" target="_blank" rel="noreferrer">jwt.comma.ai</a>.</li>
+        <li>Copy the JWT.</li>
+        <li>Paste it here.</li>
+      </ol>
+      <div class="token-row">
+        <input id="token-input" type="password" autocomplete="off" spellcheck="false" placeholder="Paste JWT here" />
+        <button class="secondary" id="save-token-button" type="button">Use JWT</button>
+      </div>
+    </details>
   `;
 }
 
