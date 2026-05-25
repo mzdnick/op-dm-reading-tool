@@ -2,7 +2,10 @@ import "./styles.css";
 import { completeAuthCallback, isSignedIn, setAccessToken, signOut } from "./auth";
 import { CALIBRATION_LIMITS, COMMA_JWT_PORTAL_URL, GITHUB_REPO_URL, OPENPILOT_MASTER_SOURCES } from "./constants";
 import { formatAngle, formatDegrees, formatLogMonoTime, pitchDirection, yawDirection, deviceLimitKey } from "./format";
+import { buildRouteShareUrl, parseRouteInput, routeInputFromUrl } from "./routeInput";
 import { scanRouteForFirstValidCalibration, scanRouteForInvalidCalibration, type CalibrationScanResult } from "./scan";
+
+type ScanMode = "quick" | "full";
 
 const app = document.querySelector<HTMLDivElement>("#app");
 if (!app) throw new Error("Missing app element");
@@ -23,6 +26,7 @@ app.innerHTML = `
           placeholder="Paste Connect URL here, e.g. https://connect.comma.ai/<dongle>/<route>" />
         <button class="scan-button" type="submit" name="scan-mode" value="quick">Quick look</button>
         <button class="scan-button secondary" type="submit" name="scan-mode" value="full">Full scan</button>
+        <button class="secondary share-button" id="share-button" type="button" disabled>Share</button>
       </div>
       <p class="form-hint">Quick look stops at the first valid calibration. Full scan checks the route for invalid calibration and shows the previous valid value when available.</p>
       <button class="ghost-button" id="demo-button" type="button">Use demo route</button>
@@ -76,6 +80,7 @@ app.innerHTML = `
 const form = document.querySelector<HTMLFormElement>("#reader-form")!;
 const input = document.querySelector<HTMLInputElement>("#route-input")!;
 const scanButtons = [...document.querySelectorAll<HTMLButtonElement>(".scan-button")];
+const shareButton = document.querySelector<HTMLButtonElement>("#share-button")!;
 const demoButton = document.querySelector<HTMLButtonElement>("#demo-button")!;
 const statusText = document.querySelector<HTMLParagraphElement>("#status-text")!;
 const progressBar = document.querySelector<HTMLDivElement>("#progress-bar")!;
@@ -84,7 +89,7 @@ const authPanel = document.querySelector<HTMLElement>("#auth-panel")!;
 let renderGeneration = 0;
 
 renderAuthPanel();
-void completePendingAuth();
+void initializeFromUrl();
 
 demoButton.addEventListener("click", () => {
   input.value = "https://connect.comma.ai/5beb9b58bd12b691/0000010a--a51155e496";
@@ -116,12 +121,59 @@ form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const submitter = event.submitter instanceof HTMLButtonElement ? event.submitter : null;
   const mode = submitter?.value === "full" ? "full" : "quick";
-  setBusy(true);
+  await submitRoute(input.value, mode, { updateHistory: true });
+});
+
+shareButton.addEventListener("click", () => {
+  if (!routeInputFromUrl(window.location.href)) return;
+  void copyText(window.location.href).then((copied) => {
+    showCopyFeedback(shareButton, copied);
+  });
+});
+
+window.addEventListener("popstate", () => {
+  const routeName = routeInputFromUrl(window.location.href);
+  setShareButtonState();
+  if (!routeName) {
+    input.value = "";
+    clearResult();
+    progressBar.classList.remove("error");
+    progressBar.style.width = "0";
+    statusText.textContent = "Paste a public route for a quick calibration look, or run a full qlog scan for invalid calibration.";
+    return;
+  }
+  input.value = routeName;
+  void submitRoute(routeName, "quick", { updateHistory: false });
+});
+
+async function submitRoute(routeInput: string, mode: ScanMode, options: { updateHistory: boolean }): Promise<void> {
   clearResult();
+
+  let routeName: string;
+  try {
+    routeName = parseRouteInput(routeInput).routeName;
+  } catch (error) {
+    if (options.updateHistory) {
+      window.history.pushState({}, "", new URL(import.meta.env.BASE_URL, window.location.origin));
+    }
+    statusText.textContent = error instanceof Error ? error.message : String(error);
+    progressBar.style.width = "100%";
+    progressBar.classList.add("error");
+    setShareButtonState();
+    return;
+  }
+
+  input.value = routeName;
+  if (options.updateHistory) {
+    window.history.pushState({}, "", buildRouteShareUrl(window.location.origin, import.meta.env.BASE_URL, routeName));
+    setShareButtonState();
+  }
+
+  setBusy(true);
 
   try {
     const scanner = mode === "full" ? scanRouteForInvalidCalibration : scanRouteForFirstValidCalibration;
-    const result = await scanner(input.value, (progress) => {
+    const result = await scanner(routeName, (progress) => {
       statusText.textContent = progress.message;
       if (progress.total && progress.current) {
         progressBar.style.width = `${Math.max(5, (progress.current / progress.total) * 100)}%`;
@@ -138,7 +190,7 @@ form.addEventListener("submit", async (event) => {
   } finally {
     setBusy(false);
   }
-});
+}
 
 function setBusy(busy: boolean): void {
   for (const button of scanButtons) {
@@ -148,6 +200,10 @@ function setBusy(busy: boolean): void {
   input.disabled = busy;
   progressBar.classList.toggle("error", false);
   if (busy) progressBar.style.width = "4%";
+}
+
+function setShareButtonState(): void {
+  shareButton.disabled = !routeInputFromUrl(window.location.href);
 }
 
 function clearResult(): void {
@@ -196,6 +252,15 @@ async function completePendingAuth(): Promise<void> {
     progressBar.classList.remove("error");
     statusText.textContent = "Signed in with comma. Paste a route and scan when ready.";
   }
+}
+
+async function initializeFromUrl(): Promise<void> {
+  await completePendingAuth();
+  const routeName = routeInputFromUrl(window.location.href);
+  setShareButtonState();
+  if (!routeName) return;
+  input.value = routeName;
+  await submitRoute(routeName, "quick", { updateHistory: false });
 }
 
 function renderResult(result: CalibrationScanResult): void {
@@ -435,4 +500,52 @@ function escapeHtml(value: string): string {
     };
     return entities[char];
   });
+}
+
+async function copyText(value: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(value);
+    return true;
+  } catch {
+    return copyTextWithSelectionFallback(value);
+  }
+}
+
+function showCopyFeedback(button: HTMLButtonElement, copied: boolean): void {
+  const original = button.textContent ?? "Copy";
+  button.textContent = copied ? "Copied" : "Copy failed";
+  button.disabled = true;
+  window.setTimeout(() => {
+    button.textContent = original;
+    button.disabled = false;
+    if (button === shareButton) setShareButtonState();
+  }, 1200);
+}
+
+function copyTextWithSelectionFallback(value: string): boolean {
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  textarea.style.top = "0";
+  document.body.append(textarea);
+
+  const selection = document.getSelection();
+  const selectedRange = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+  textarea.select();
+
+  let copied = false;
+  try {
+    copied = document.execCommand("copy");
+  } catch {
+    copied = false;
+  }
+
+  textarea.remove();
+  if (selectedRange && selection) {
+    selection.removeAllRanges();
+    selection.addRange(selectedRange);
+  }
+  return copied;
 }
