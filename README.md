@@ -3,6 +3,9 @@
 A small all-client-side web app that scans a public openpilot route for invalid
 `liveCalibration` messages.
 
+[Open the GitHub Pages app](https://ophwug.github.io/op-calibration-reading-tool/)
+or view the repo at [ophwug/op-calibration-reading-tool](https://github.com/ophwug/op-calibration-reading-tool).
+
 It fetches comma's public route file list, downloads qlogs first when available,
 falls back to rlogs, supports `.zst` and `.bz2`, decompresses in the browser, and
 decodes just enough Cap'n Proto to read calibration values. If it finds invalid
@@ -35,11 +38,8 @@ This repo includes a GitHub Actions workflow at `.github/workflows/pages.yml`.
 Pushes to `main` build the app and deploy `dist` to GitHub Pages.
 
 For the `ophwug/op-calibration-reading-tool` project page, the app is built
-with the Vite base path `/op-calibration-reading-tool/`, so the expected URL is:
-
-```text
-https://ophwug.github.io/op-calibration-reading-tool/
-```
+with the Vite base path `/op-calibration-reading-tool/`, so the live URL is
+[https://ophwug.github.io/op-calibration-reading-tool/](https://ophwug.github.io/op-calibration-reading-tool/).
 
 ## Getting a usable route
 
