@@ -404,7 +404,7 @@ function adjustmentHint(value: number, axis: "pitch" | "yaw"): string {
   if (axis === "pitch") {
     return value > 0 ? "To get closer to 0°, aim the device more up." : "To get closer to 0°, aim the device more down.";
   }
-  return value > 0 ? "To get closer to 0°, aim the device more to the right." : "To get closer to 0°, aim the device more to the left.";
+  return value > 0 ? "To get closer to 0°, aim the device outward more to the left." : "To get closer to 0°, aim the device outward more to the right.";
 }
 
 function renderPreviousValid(previous: NonNullable<CalibrationScanResult["previousValid"]>, routeInfo: CalibrationScanResult["routeInfo"]): string {
