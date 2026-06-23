@@ -72,11 +72,30 @@ export async function scanRouteForFirstValidCalibration(
   onProgress: (progress: ScanProgress) => void,
 ): Promise<CalibrationScanResult> {
   const context = await loadRouteLogContext(input, onProgress);
+  let decodedSegments = 0;
+  const readFailures: LogReadFailure[] = [];
 
   for (let index = 0; index < context.logUrls.length; index += 1) {
     const logUrl = context.logUrls[index];
     const segment = segmentFromUrl(logUrl);
-    const { calibrationMessages, deviceType } = await downloadLogSegmentScan(logUrl, segment, index, context.logUrls.length, context.source, onProgress);
+    let calibrationMessages: CalibrationMessage[];
+    let deviceType: DeviceType | null;
+    try {
+      const segmentScan = await downloadLogSegmentScan(logUrl, segment, index, context.logUrls.length, context.source, onProgress);
+      calibrationMessages = segmentScan.calibrationMessages;
+      deviceType = segmentScan.deviceType;
+      decodedSegments += 1;
+    } catch (error) {
+      const failure = { logUrl, segment, message: readableLogError(error) };
+      readFailures.push(failure);
+      onProgress({
+        phase: "decode",
+        message: `Could not read ${logFileKind(context.source)} segment ${segment}: ${failure.message}`,
+        current: index + 1,
+        total: context.logUrls.length,
+      });
+      continue;
+    }
     context.routeInfo = routeInfoWithDeviceType(context.routeInfo, context.routeName, deviceType);
     const message = calibrationMessages.find((calibration) => calibration.status === 1 && calibration.rpyCalib.length === 3);
     if (message) {
@@ -90,7 +109,7 @@ export async function scanRouteForFirstValidCalibration(
         message,
         previousValid: null,
         qcameraPreview: previewForSegment(context.qcameraUrls, 1, "early-route"),
-        readFailures: [],
+        readFailures,
         scannedSegments: index + 1,
         totalSegments: context.logUrls.length,
         scanMode: "quick",
@@ -100,7 +119,16 @@ export async function scanRouteForFirstValidCalibration(
     }
   }
 
-  throw new Error(`Scanned ${context.logUrls.length} uploaded ${logFileKind(context.source)} segment(s), but found no valid liveCalibration messages.`);
+  if (readFailures.length > 0) {
+    throw new Error(
+      withMissingCalibrationHint(
+        `Decoded ${decodedSegments} uploaded ${logFileKind(context.source)} segment(s) and skipped ${readFailures.length} unreadable segment(s), but found no valid liveCalibration messages.`,
+      ),
+    );
+  }
+  throw new Error(
+    withMissingCalibrationHint(`Scanned ${decodedSegments} uploaded ${logFileKind(context.source)} segment(s), but found no valid liveCalibration messages.`),
+  );
 }
 
 export async function scanRouteForInvalidCalibration(
@@ -197,10 +225,16 @@ export async function scanRouteForInvalidCalibration(
 
   if (readFailures.length > 0) {
     throw new Error(
-      `Decoded ${decodedSegments} uploaded ${logFileKind(context.source)} segment(s) and skipped ${readFailures.length} unreadable segment(s), but found no invalid or valid liveCalibration messages.`,
+      withMissingCalibrationHint(
+        `Decoded ${decodedSegments} uploaded ${logFileKind(context.source)} segment(s) and skipped ${readFailures.length} unreadable segment(s), but found no invalid or valid liveCalibration messages.`,
+      ),
     );
   }
-  throw new Error(`Scanned ${decodedSegments} uploaded ${logFileKind(context.source)} segment(s), but found no invalid or valid liveCalibration messages.`);
+  throw new Error(
+    withMissingCalibrationHint(
+      `Scanned ${decodedSegments} uploaded ${logFileKind(context.source)} segment(s), but found no invalid or valid liveCalibration messages.`,
+    ),
+  );
 }
 
 async function loadRouteLogContext(
@@ -275,6 +309,10 @@ function readableLogError(error: unknown): string {
     return "unexpected EOF while decompressing; this log segment looks truncated";
   }
   return message;
+}
+
+function withMissingCalibrationHint(message: string): string {
+  return `${message} This usually means calibrationd did not publish on this drive. Possible causes include dashcam-only/no-control mode, a comma 3 on a CAN-FD car, or an incorrect or bad harness connection.`;
 }
 
 function routeInfoWithDeviceType(routeInfo: RouteInfo | null, routeName: string, deviceType: DeviceType | null): RouteInfo | null {

@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CalibrationMessage } from "./capnp";
-import { findDeviceType } from "./capnp";
+import { findCalibrationMessages, findDeviceType } from "./capnp";
 import { decompressLog } from "./decompress";
-import { scanRouteForInvalidCalibration } from "./scan";
+import { scanRouteForFirstValidCalibration, scanRouteForInvalidCalibration } from "./scan";
 
 vi.mock("./decompress", () => ({
   decompressLog: vi.fn((bytes: Uint8Array, url: string) => {
@@ -31,6 +31,19 @@ vi.mock("./capnp", () => ({
 describe("full route scan", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(findCalibrationMessages).mockReturnValue([
+      {
+        logMonoTime: 1n,
+        status: 1,
+        statusName: "calibrated",
+        calPerc: 100,
+        validBlocks: 20,
+        rpyCalib: [0, 0, 0],
+        rpyCalibSpread: [],
+        wideFromDeviceEuler: [],
+        height: [],
+      },
+    ]);
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
@@ -69,6 +82,37 @@ describe("full route scan", () => {
       segment: 1,
     });
     expect(findDeviceType).toHaveBeenCalledTimes(1);
+    expect(decompressLog).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("quick route scan", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(findCalibrationMessages).mockReturnValue([]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/files")) {
+          return Response.json({
+            qlogs: ["https://example.test/route/0/qlog.zst", "https://example.test/route/1/qlog.zst"],
+            qcameras: [],
+          });
+        }
+        if (url.endsWith("/v1/route/test%7Croute/")) {
+          return Response.json({ fullname: "test|route" });
+        }
+        return new Response(new Uint8Array([1]));
+      }),
+    );
+  });
+
+  it("reports unreadable segments clearly when no valid calibration is found", async () => {
+    await expect(scanRouteForFirstValidCalibration("test|route", () => {})).rejects.toThrow(
+      "Decoded 1 uploaded qlog segment(s) and skipped 1 unreadable segment(s), but found no valid liveCalibration messages. This usually means calibrationd did not publish on this drive. Possible causes include dashcam-only/no-control mode, a comma 3 on a CAN-FD car, or an incorrect or bad harness connection.",
+    );
+
     expect(decompressLog).toHaveBeenCalledTimes(2);
   });
 });
