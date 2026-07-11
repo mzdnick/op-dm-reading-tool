@@ -18,10 +18,12 @@ describe("route parsing", () => {
     });
   });
 
-  it("strips dragged-along clip times from comma Connect URLs", () => {
+  it("preserves clip times from comma Connect URLs", () => {
     expect(parseRouteInput("https://connect.comma.ai/5beb9b58bd12b691/0000010a--a51155e496/90/105")).toMatchObject({
       routeName: "5beb9b58bd12b691|0000010a--a51155e496",
       source: "connect-url",
+      startSeconds: 90,
+      endSeconds: 105,
     });
   });
 
@@ -32,19 +34,19 @@ describe("route parsing", () => {
   });
 
   it("builds share URLs on the configured app base path", () => {
-    expect(buildRouteShareUrl("https://example.test", "/op-calibration-reading-tool/", "5beb9b58bd12b691|0000010a--a51155e496")).toBe(
-      "https://example.test/op-calibration-reading-tool/?route=5beb9b58bd12b691%7C0000010a--a51155e496",
+    expect(buildRouteShareUrl("https://example.test", "/op-dm-reading-tool/", "5beb9b58bd12b691|0000010a--a51155e496")).toBe(
+      "https://example.test/op-dm-reading-tool/?route=5beb9b58bd12b691%7C0000010a--a51155e496",
     );
   });
 
-  it("canonicalizes Connect URLs in share URLs", () => {
+  it("preserves Connect clip URLs in share URLs", () => {
     const shareUrl = buildRouteShareUrl(
       "https://example.test",
       "/",
       "https://connect.comma.ai/5beb9b58bd12b691/0000010a--a51155e496/90/105",
     );
 
-    expect(routeInputFromUrl(shareUrl)).toBe("5beb9b58bd12b691|0000010a--a51155e496");
+    expect(routeInputFromUrl(shareUrl)).toBe("https://connect.comma.ai/5beb9b58bd12b691/0000010a--a51155e496/90/105");
   });
 
   it("ignores empty and invalid route query params", () => {
@@ -55,9 +57,9 @@ describe("route parsing", () => {
   it("preserves route params when cleaning OAuth callback URLs", () => {
     expect(
       buildAuthCallbackCleanUrl(
-        "https://example.test/op-calibration-reading-tool/?code=abc&provider=g&route=5beb9b58bd12b691%7C0000010a--a51155e496",
-        "/op-calibration-reading-tool/",
+        "https://example.test/op-dm-reading-tool/?code=abc&provider=g&route=5beb9b58bd12b691%7C0000010a--a51155e496",
+        "/op-dm-reading-tool/",
       ),
-    ).toBe("https://example.test/op-calibration-reading-tool/?route=5beb9b58bd12b691%7C0000010a--a51155e496");
+    ).toBe("https://example.test/op-dm-reading-tool/?route=5beb9b58bd12b691%7C0000010a--a51155e496");
   });
 });

@@ -1,98 +1,97 @@
-# openpilot invalid calibration scanner
+# openpilot driver monitoring debugger
 
-A small all-client-side web app that scans a public openpilot route for invalid
-`liveCalibration` messages.
+An all-client-side web debugger for openpilot Driver Monitoring. Paste a comma
+Connect route or clip URL to replay uploaded driver-camera video alongside the
+state that openpilot used to decide whether the driver was attentive.
 
-[Open the GitHub Pages app](https://ophwug.github.io/op-calibration-reading-tool/)
-or view the repo at [ophwug/op-calibration-reading-tool](https://github.com/ophwug/op-calibration-reading-tool).
+The UI is based on the `driver-debug` renderer in
+[op-replay-clipper](https://github.com/nelsonjchen/op-replay-clipper): it shows
+awareness, distraction reasons, alerts, face and eye probabilities, phone and
+sunglasses probabilities, pose/calibration values, and coarse driver/other-seat
+boxes over the synchronized camera feed.
 
-It fetches comma's public route file list, downloads qlogs first when available,
-falls back to rlogs, supports `.zst` and `.bz2`, decompresses in the browser, and
-decodes just enough Cap'n Proto to read calibration values. If it finds invalid
-calibration, it reports that message plus the valid calibration seen immediately
-before it when available. If no invalid calibration is found, it reports the
-earliest valid calibration as an all-clear.
+Everything runs in the browser. Route logs, video, and JWTs are not uploaded to
+this project or a project-owned backend.
 
-## Run locally
+## Browser and video requirements
 
-```sh
-npm install
-npm run dev
-```
+openpilot uploads driver video as raw HEVC/H.265. This app downloads only the
+keyframe-aligned byte ranges needed for the selected clip and remuxes those
+encoded bytes into fragmented MP4 in memory. It does not transcode the video.
 
-Open the local URL printed by Vite.
+Your browser, operating system, and hardware must therefore provide native HEVC
+decoding. The app checks this before loading video
+and leaves telemetry usable when video is unsupported. There is intentionally no
+large WebAssembly decoder or server transcoding fallback in the first version.
 
-## Deploy on Cloudflare Pages
+Driver camera recording must have been enabled on the device. Driver-camera
+footage is sensitive: check what is visible before sharing your screen or route.
 
-Use these settings:
+## Using the debugger
 
-- Build command: `npm run build`
-- Build output directory: `dist`
-- Node version: current LTS or newer
+1. Open the drive in [comma Connect](https://connect.comma.ai/).
+2. Under **More info**, enable **Public access**, or use the JWT option in this
+   app for a private route.
+3. Paste the Connect URL. URLs ending in `/start/end` load that clip range; a
+   bare route URL defaults to the first 30 seconds.
 
-No server-side function is required.
-
-## Deploy on GitHub Pages
-
-This repo includes a GitHub Actions workflow at `.github/workflows/pages.yml`.
-Pushes to `main` build the app and deploy `dist` to GitHub Pages.
-
-For the `ophwug/op-calibration-reading-tool` project page, the app is built
-with the Vite base path `/op-calibration-reading-tool/`, so the live URL is
-[https://ophwug.github.io/op-calibration-reading-tool/](https://ophwug.github.io/op-calibration-reading-tool/).
-
-## Getting a usable route
-
-1. Open [comma Connect](https://connect.comma.ai/) and select the drive.
-2. Open **More info** and turn on **Public access**.
-3. Copy either the browser URL or the route name.
-
-Accepted inputs look like:
+Accepted inputs include:
 
 ```text
-5beb9b58bd12b691|0000010a--a51155e496
-https://connect.comma.ai/5beb9b58bd12b691/0000010a--a51155e496/90/105
+<dongle-id>|<route-id>
+https://connect.comma.ai/<dongle-id>/<route-id>
+https://connect.comma.ai/<dongle-id>/<route-id>/90/120
 ```
 
-You can turn Public access off again after reading the route.
+The parser supports both the legacy flat Driver Monitoring state and the modern
+policy-based state (`visionPolicyState` and `wheeltouchPolicyState`).
 
-## Related tools
+## Local development
 
-Remounting or installing a device? The community-made
-[mount installation templates](https://github.com/ophwug/mount-install-templates)
-repo has printable mount placement PDFs for comma three, comma 3x, and comma
-four. These are not official comma.ai templates.
-
-## Scan modes
-
-- **Quick look**: stop at the first valid calibration and show which device
-  tolerance bucket was used, plus the pitch/yaw landing visualization. This is
-  best for quickly checking where the mounted device calibration landed.
-- **Full scan**: scan uploaded qlogs first, fall back to rlogs only when qlogs
-  are unavailable, and check the route for invalid calibration. If invalid
-  calibration appears, report the invalid message and the valid calibration
-  immediately before it when available. This is best for debugging routes where
-  calibration changed or went bad mid-drive.
-
-## Current calibration tolerances
-
-As of the current openpilot `master` code checked on 2026-05-13, calibration is
-considered valid after at least 5 valid calibration blocks and when pitch/yaw are
-inside:
-
-- tici / comma 3 and tizi / comma 3x: pitch `-5.20°` to `9.74°`, yaw `-3.96°` to `3.96°`
-- mici / comma four: pitch `-8.20°` to `12.74°`, yaw `-3.96°` to `3.96°`
-
-The openpilot device settings text rounds the tici / comma 3 and tizi / comma
-3x case to within `4°` left/right and within `5°` up or `9°` down.
-
-## Useful commands
+The repository uses pnpm through Corepack:
 
 ```sh
-npm test
-npm run test:smoke
-npm run build
+corepack enable
+pnpm install
+pnpm dev
 ```
 
-`test:smoke` uses the public demo route from `op-replay-clipper`, so it needs
-network access.
+Useful checks:
+
+```sh
+pnpm test
+pnpm build
+pnpm test:smoke
+```
+
+The normal unit suite is deterministic and offline. Live smoke and browser tests
+read `COMMA_TEST_ROUTE` and `COMMA_JWT` from `.env.local`; copy `.env.example`
+and fill those values locally. Both tests skip the private modern fixture when
+the variables are absent.
+
+## Deployment
+
+The app is a static Vite site. For Cloudflare Pages, use `pnpm build` and publish
+`dist`. No server-side function is required, and secrets must never be added as
+`VITE_` variables because those are exposed to browser code.
+
+## How the streaming path works
+
+Each qlog contains `driverEncodeIdx` records with encoded frame lengths,
+keyframe flags, timestamps, segment numbers, and presentation/encode order. The
+app uses those records to bound HTTP Range requests, starts at the preceding
+keyframe, continuously parses Annex-B NAL units across the index boundaries, and
+builds GOP-fragmented MP4 in memory without re-encoding. Network reads are capped
+at roughly 2 MiB each. The selected clip's remuxed MP4 remains in memory during
+playback, so short Connect clip URLs are preferable to very long ranges.
+
+## Privacy and limitations
+
+- JWTs are stored only in the current browser, as in the original route tool.
+- Face boxes are coarse model-derived anchors, not face detections or privacy
+  redaction.
+- This is diagnostic tooling, not a replacement for openpilot's safety checks.
+- Live route smoke tests can fail when external comma services are unavailable;
+  they are kept separate from required offline tests.
+- `pnpm test:browser` is the native-codec end-to-end loop. It uses system Chrome
+  and an encrypted private-route fixture on the scheduled/manual macOS CI job.

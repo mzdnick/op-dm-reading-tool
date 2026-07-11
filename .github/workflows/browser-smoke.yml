@@ -1,0 +1,32 @@
+name: Native HEVC browser smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 11 * * 2"
+
+permissions:
+  contents: read
+
+jobs:
+  hevc:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+          run_install: false
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm test:smoke
+        env:
+          COMMA_TEST_ROUTE: ${{ secrets.COMMA_TEST_ROUTE }}
+          COMMA_JWT: ${{ secrets.COMMA_JWT }}
+      - run: pnpm test:browser
+        env:
+          COMMA_TEST_ROUTE: ${{ secrets.COMMA_TEST_ROUTE }}
+          COMMA_JWT: ${{ secrets.COMMA_JWT }}

@@ -58,6 +58,10 @@ export function orderedQcameraUrls(files: RouteFiles): string[] {
   return sortBySegment(files.qcameras ?? []);
 }
 
+export function orderedDcameraUrls(files: RouteFiles): string[] {
+  return sortBySegment(files.dcameras ?? []);
+}
+
 export function logSourceLabel(files: RouteFiles): "qlogs" | "rlogs" | "none" {
   if ((files.qlogs ?? []).length > 0) return "qlogs";
   if ((files.logs ?? []).length > 0) return "rlogs";
@@ -65,7 +69,7 @@ export function logSourceLabel(files: RouteFiles): "qlogs" | "rlogs" | "none" {
 }
 
 export function segmentFromUrl(url: string): number {
-  const match = url.match(/\/(\d+)\/(?:qlog|rlog|qcamera)\.(?:bz2|zst|ts)(?:\?|$)/);
+  const match = url.match(/\/(\d+)\/(?:qlog|rlog|qcamera|dcamera)\.(?:bz2|zst|ts|hevc)(?:\?|$)/);
   return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
 }
 

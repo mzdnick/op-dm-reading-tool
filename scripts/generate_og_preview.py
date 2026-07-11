@@ -77,17 +77,17 @@ def main() -> None:
     draw.rounded_rectangle((44, 44, WIDTH - 44, HEIGHT - 44), radius=30, fill="#172226")
     pill(draw, (80, 82), "openpilot route utility", 21, "#d9f2e7", "#173d39")
 
-    text(draw, (80, 166), "Invalid", 70, "#f7fbf9", True)
-    text(draw, (80, 242), "calibration", 70, "#f7fbf9", True)
-    text(draw, (80, 318), "scanner", 70, "#f7fbf9", True)
-    text(draw, (82, 420), "Quick look for current tolerance.", 29, "#cfe0da", False)
-    text(draw, (82, 462), "Full qlog scan for invalid calibration.", 29, "#cfe0da", False)
+    text(draw, (80, 166), "openpilot", 70, "#f7fbf9", True)
+    text(draw, (80, 242), "driver monitoring", 70, "#f7fbf9", True)
+    text(draw, (80, 318), "debugger", 70, "#f7fbf9", True)
+    text(draw, (82, 420), "Replay the driver camera in your browser.", 29, "#cfe0da", False)
+    text(draw, (82, 462), "Synchronized video, model state, and awareness.", 29, "#cfe0da", False)
 
     draw.rounded_rectangle((80, 530, 600, 582), radius=26, fill="#244540")
     fitted_text(
         draw,
         (108, 543),
-        "ophwug.github.io/op-calibration-reading-tool",
+        "ophwug.github.io/op-dm-reading-tool",
         21,
         464,
         "#9ee6c1",
@@ -96,9 +96,9 @@ def main() -> None:
     )
 
     draw.rounded_rectangle((682, 130, 1120, 500), radius=24, fill="#203034", outline="#3a5550", width=2)
-    text(draw, (720, 176), "Tolerance landing", 33, "#f7fbf9", True)
-    tolerance_row(draw, 250, "Pitch", 0.93, "9.44 deg")
-    tolerance_row(draw, 372, "Yaw", 0.53, "0.26 deg")
+    text(draw, (720, 176), "Driver Monitoring", 33, "#f7fbf9", True)
+    tolerance_row(draw, 250, "Awareness", 0.93, "93%")
+    tolerance_row(draw, 372, "Face probability", 0.78, "78%")
 
     image.save(OUT, "PNG", optimize=True)
 

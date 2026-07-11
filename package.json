@@ -1,22 +1,26 @@
 {
-  "name": "op-calibration-reading-tool",
+  "name": "op-dm-reading-tool",
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@11.11.0",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc && vite build && node scripts/copy_404.mjs",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "vitest run --exclude src/scan.smoke.test.ts",
-    "test:smoke": "vitest run src/scan.smoke.test.ts"
+    "test": "vitest run src --exclude src/dm.smoke.test.ts",
+    "test:smoke": "node --env-file-if-exists=.env.local node_modules/vitest/vitest.mjs run src/dm.smoke.test.ts",
+    "test:browser": "node --env-file-if-exists=.env.local node_modules/@playwright/test/cli.js test"
   },
   "dependencies": {
     "bz2": "1.0.1",
     "fzstd": "0.1.1",
-    "mux.js": "^6.3.0",
+    "mp4box": "2.4.1",
     "vite": "8.0.12"
   },
   "devDependencies": {
+    "@playwright/test": "1.61.1",
+    "@types/node": "^26.1.1",
     "typescript": "6.0.3",
     "vitest": "4.0.14"
   }

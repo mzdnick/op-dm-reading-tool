@@ -1,31 +1,24 @@
-import { CALIBRATION_STATUS_NAMES, LIVE_CALIBRATION_UNION_TAG } from "./constants";
-
 export interface SegmentData {
   bytes: Uint8Array;
   offset: number;
   lengthWords: number;
 }
 
-export interface CalibrationMessage {
-  logMonoTime: bigint;
-  status: number;
-  statusName: string;
-  calPerc: number;
-  validBlocks: number;
-  rpyCalib: number[];
-  rpyCalibSpread: number[];
-  wideFromDeviceEuler: number[];
-  height: number[];
-}
-
 export type DeviceType = "unknown" | "neo" | "chffrAndroid" | "chffrIos" | "tici" | "pc" | "tizi" | "mici";
 
-interface StructRef {
+export interface StructRef {
   segment: SegmentData;
+  segmentIndex: number;
   dataOffset: number;
   pointerOffset: number;
   dataWords: number;
   pointerCount: number;
+}
+
+export interface EventEnvelope {
+  logMonoTime: bigint;
+  unionTag: number;
+  payload: StructRef | null;
 }
 
 interface ListRef {
@@ -42,17 +35,6 @@ const INIT_DATA_UNION_TAG = 0;
 const DEVICE_STATE_UNION_TAG = 5;
 const INIT_DATA_DEVICE_TYPE_BYTE_OFFSET = 0;
 const DEVICE_STATE_DEVICE_TYPE_BYTE_OFFSET = 82;
-const LIVE_CALIBRATION_STATUS_BYTE_OFFSET = 2;
-const LIVE_CALIBRATION_CAL_PERC_BYTE_OFFSET = 1;
-const LIVE_CALIBRATION_VALID_BLOCKS_BYTE_OFFSET = 8;
-
-const LIVE_CALIBRATION_POINTER_FIELDS = {
-  rpyCalib: 4,
-  rpyCalibSpread: 5,
-  wideFromDeviceEuler: 6,
-  height: 7,
-} as const;
-
 const DEVICE_TYPES: Record<number, DeviceType> = {
   0: "unknown",
   1: "neo",
@@ -96,27 +78,6 @@ export function* readMessages(bytes: Uint8Array): Generator<SegmentData[]> {
   }
 }
 
-export function findFirstCalibrationMessage(
-  bytes: Uint8Array,
-  predicate: (message: CalibrationMessage) => boolean = (message) => message.status === 1 && message.rpyCalib.length === 3,
-): CalibrationMessage | null {
-  return findCalibrationMessages(bytes, predicate)[0] ?? null;
-}
-
-export function findCalibrationMessages(
-  bytes: Uint8Array,
-  predicate: (message: CalibrationMessage) => boolean = (message) => message.status === 1 && message.rpyCalib.length === 3,
-): CalibrationMessage[] {
-  const messages: CalibrationMessage[] = [];
-  for (const segments of readMessages(bytes)) {
-    const msg = readLiveCalibrationMessage(segments);
-    if (msg && predicate(msg)) {
-      messages.push(msg);
-    }
-  }
-  return messages;
-}
-
 export function findDeviceType(bytes: Uint8Array): DeviceType | null {
   for (const segments of readMessages(bytes)) {
     const deviceType = readDeviceTypeMessage(segments);
@@ -125,29 +86,67 @@ export function findDeviceType(bytes: Uint8Array): DeviceType | null {
   return null;
 }
 
-export function readLiveCalibrationMessage(segments: SegmentData[]): CalibrationMessage | null {
+export function readEventEnvelope(segments: SegmentData[]): EventEnvelope | null {
   if (segments.length === 0) return null;
   const root = readStructPointer(segments, 0, segments[0].offset);
   if (!root) return null;
-
-  const unionTag = getUint16(root, EVENT_UNION_TAG_BYTE_OFFSET);
-  if (unionTag !== LIVE_CALIBRATION_UNION_TAG) return null;
-
-  const liveCalibration = readStructPointer(segments, root.segmentIndex, pointerFieldOffset(root, EVENT_POINTER_FIELD_0));
-  if (!liveCalibration) return null;
-
-  const status = getUint16(liveCalibration, LIVE_CALIBRATION_STATUS_BYTE_OFFSET);
+  let payload: StructRef | null = null;
+  try {
+    payload = readStructPointer(segments, root.segmentIndex, pointerFieldOffset(root, EVENT_POINTER_FIELD_0));
+  } catch {
+    // Some unrelated high-volume Event payloads use far pointers. Consumers of
+    // this focused decoder can still inspect the tag and skip those messages.
+  }
   return {
     logMonoTime: getBigUint64(root, 0),
-    status,
-    statusName: CALIBRATION_STATUS_NAMES[status] ?? `unknown (${status})`,
-    calPerc: getInt8(liveCalibration, LIVE_CALIBRATION_CAL_PERC_BYTE_OFFSET),
-    validBlocks: getInt32(liveCalibration, LIVE_CALIBRATION_VALID_BLOCKS_BYTE_OFFSET),
-    rpyCalib: readFloat32List(liveCalibration, LIVE_CALIBRATION_POINTER_FIELDS.rpyCalib),
-    rpyCalibSpread: readFloat32List(liveCalibration, LIVE_CALIBRATION_POINTER_FIELDS.rpyCalibSpread),
-    wideFromDeviceEuler: readFloat32List(liveCalibration, LIVE_CALIBRATION_POINTER_FIELDS.wideFromDeviceEuler),
-    height: readFloat32List(liveCalibration, LIVE_CALIBRATION_POINTER_FIELDS.height),
+    unionTag: getUint16(root, EVENT_UNION_TAG_BYTE_OFFSET),
+    payload,
   };
+}
+
+export function readStructField(ref: StructRef | null, pointerIndex: number): StructRef | null {
+  if (!ref || pointerIndex >= ref.pointerCount) return null;
+  return readStructPointer([ref.segment], 0, pointerFieldOffset({ ...ref, segmentIndex: 0 }, pointerIndex));
+}
+
+export function readFloatList(ref: StructRef | null, pointerIndex: number): number[] {
+  return ref ? readFloat32List(ref, pointerIndex) : [];
+}
+
+export function readBool(ref: StructRef | null, bitOffset: number): boolean {
+  if (!ref) return false;
+  const byteOffset = Math.floor(bitOffset / 8);
+  return (getUint8(ref, byteOffset) & (1 << (bitOffset % 8))) !== 0;
+}
+
+export function readInt8(ref: StructRef | null, slotOffset: number): number {
+  return ref ? getInt8(ref, slotOffset) : 0;
+}
+
+export function readUint16Slot(ref: StructRef | null, slotOffset: number): number {
+  return ref ? getUint16(ref, slotOffset * 2) : 0;
+}
+
+export function readUint32(ref: StructRef | null, slotOffset: number): number {
+  if (!ref) return 0;
+  const view = dataView(ref);
+  return view.getUint32(ref.dataOffset + slotOffset * 4, true);
+}
+
+export function readInt32Slot(ref: StructRef | null, slotOffset: number): number {
+  if (!ref) return 0;
+  const view = dataView(ref);
+  return view.getInt32(ref.dataOffset + slotOffset * 4, true);
+}
+
+export function readUint64Slot(ref: StructRef | null, slotOffset: number): bigint {
+  return ref ? getBigUint64(ref, slotOffset * 8) : 0n;
+}
+
+export function readFloat32(ref: StructRef | null, slotOffset: number): number {
+  if (!ref) return 0;
+  const view = dataView(ref);
+  return view.getFloat32(ref.dataOffset + slotOffset * 4, true);
 }
 
 function readDeviceTypeMessage(segments: SegmentData[]): DeviceType | null {
@@ -249,14 +248,17 @@ function getUint16(ref: StructRef, relativeOffset: number): number {
   return view.getUint16(ref.dataOffset + relativeOffset, true);
 }
 
-function getInt32(ref: StructRef, relativeOffset: number): number {
-  const view = new DataView(ref.segment.bytes.buffer, ref.segment.bytes.byteOffset, ref.segment.bytes.byteLength);
-  return view.getInt32(ref.dataOffset + relativeOffset, true);
-}
-
 function getInt8(ref: StructRef, relativeOffset: number): number {
   const view = new DataView(ref.segment.bytes.buffer, ref.segment.bytes.byteOffset, ref.segment.bytes.byteLength);
   return view.getInt8(ref.dataOffset + relativeOffset);
+}
+
+function getUint8(ref: StructRef, relativeOffset: number): number {
+  return dataView(ref).getUint8(ref.dataOffset + relativeOffset);
+}
+
+function dataView(ref: StructRef): DataView {
+  return new DataView(ref.segment.bytes.buffer, ref.segment.bytes.byteOffset, ref.segment.bytes.byteLength);
 }
 
 function signed30(value: number): number {

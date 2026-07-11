@@ -5,7 +5,12 @@ export interface ParsedRouteInput {
   dongleId: string;
   routeId: string;
   source: "route" | "connect-url";
+  startSeconds: number;
+  endSeconds: number;
 }
+
+export const DEFAULT_CLIP_START_SECONDS = 0;
+export const DEFAULT_CLIP_END_SECONDS = 30;
 
 export function parseRouteInput(input: string): ParsedRouteInput {
   const trimmed = input.trim();
@@ -18,11 +23,16 @@ export function parseRouteInput(input: string): ParsedRouteInput {
       throw new Error("Connect URLs need at least /<dongle>/<route> in the path.");
     }
     const [dongleId, routeId] = parts;
+    const startSeconds = parseClipSecond(parts[2], DEFAULT_CLIP_START_SECONDS);
+    const endSeconds = parseClipSecond(parts[3], DEFAULT_CLIP_END_SECONDS);
+    if (endSeconds <= startSeconds) throw new Error("Connect clip end must be after its start time.");
     return {
       routeName: `${dongleId}|${routeId}`,
       dongleId,
       routeId,
       source: "connect-url",
+      startSeconds,
+      endSeconds,
     };
   }
 
@@ -37,7 +47,16 @@ export function parseRouteInput(input: string): ParsedRouteInput {
     dongleId,
     routeId,
     source: "route",
+    startSeconds: DEFAULT_CLIP_START_SECONDS,
+    endSeconds: DEFAULT_CLIP_END_SECONDS,
   };
+}
+
+function parseClipSecond(value: string | undefined, fallback: number): number {
+  if (value === undefined) return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) throw new Error("Connect clip times must be non-negative numbers.");
+  return parsed;
 }
 
 export function routeInputFromUrl(urlLike: string | URL): string | null {
@@ -46,16 +65,17 @@ export function routeInputFromUrl(urlLike: string | URL): string | null {
   if (!rawRoute?.trim()) return null;
 
   try {
-    return parseRouteInput(rawRoute).routeName;
+    parseRouteInput(rawRoute);
+    return rawRoute;
   } catch {
     return null;
   }
 }
 
 export function buildRouteShareUrl(origin: string, basePath: string, routeInput: string): string {
-  const routeName = parseRouteInput(routeInput).routeName;
+  parseRouteInput(routeInput);
   const url = new URL(basePath || "/", origin);
-  url.searchParams.set(ROUTE_QUERY_PARAM, routeName);
+  url.searchParams.set(ROUTE_QUERY_PARAM, routeInput.trim());
   return url.toString();
 }
 

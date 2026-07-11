@@ -91,7 +91,7 @@ describe("comma auth token storage", () => {
 
     expect(providers).toHaveLength(3);
     expect(providers[0].url).toContain("state=service%2Cnew-connect.connect-d5y.pages.dev");
-    expect(providers[0].url).not.toContain("op-calibration-reading-tool");
+    expect(providers[0].url).not.toContain("op-dm-reading-tool");
   });
 
   it("removes OAuth callback params without discarding a shared route", async () => {
