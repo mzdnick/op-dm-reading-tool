@@ -2,7 +2,9 @@ import { createFile } from "mp4box";
 import type { DriverVideoFrameIndex } from "./dm";
 
 const MAX_RANGE_BYTES = 512 * 1024;
-const BUFFER_AHEAD_SECONDS = 8;
+const BUFFER_AHEAD_SECONDS = 20;
+const SEEK_BUFFER_CUSHION_SECONDS = 1;
+const VIDEO_DEMAND_EVENT = "driver-video-demand";
 const HEVC_CODEC = "hvc1.1.6.L153.B0";
 const TIMESCALE = 10_240;
 
@@ -30,6 +32,7 @@ export function detectHevcSupport(): HevcSupport {
 export function framesForClip(frames: DriverVideoFrameIndex[], startSeconds: number, endSeconds: number): DriverVideoFrameIndex[] {
   if (frames.length === 0) return [];
   const presentation = [...frames].sort((a, b) => a.routeSeconds - b.routeSeconds);
+  if (presentation.at(-1)!.routeSeconds < startSeconds || presentation[0].routeSeconds >= endSeconds) return [];
   const targetIndex = presentation.findIndex((frame) => frame.routeSeconds >= startSeconds);
   const firstTarget = targetIndex < 0 ? presentation.length - 1 : targetIndex;
   let keyframe = firstTarget;
@@ -52,6 +55,10 @@ export function planVideoRanges(frames: DriverVideoFrameIndex[], maxBytes = MAX_
       previous.end = frameEnd;
       previous.frames.push(frame);
     } else {
+      // qcamera frame byte offsets can precede the next Annex-B start code. Let
+      // the prior fetch overlap one complete keyframe so its final NAL is not
+      // truncated when a memory-sized range is split.
+      if (previous && contiguous) previous.end = frameEnd;
       ranges.push({ start: frame.byteOffset, end: frameEnd, frames: [frame] });
     }
   }
@@ -62,9 +69,24 @@ export class DriverVideoPlayer {
   private abortController: AbortController | null = null;
   private mediaSource: MediaSource | null = null;
   private objectUrl: string | null = null;
+  private pendingSeekTime: number | null = null;
+  private resumeAfterSeek = false;
   playbackRouteStart = 0;
 
   constructor(private readonly video: HTMLVideoElement) {}
+
+  seek(routeSeconds: number): void {
+    const target = Math.max(0, routeSeconds - this.playbackRouteStart);
+    if (isBuffered(this.video, target, SEEK_BUFFER_CUSHION_SECONDS)) {
+      this.pendingSeekTime = null;
+      this.video.currentTime = target;
+      return;
+    }
+    this.resumeAfterSeek ||= !this.video.paused;
+    this.video.pause();
+    this.pendingSeekTime = target;
+    this.video.dispatchEvent(new Event(VIDEO_DEMAND_EVENT));
+  }
 
   async load(
     segmentSources: Array<{ url: string; frames: DriverVideoFrameIndex[] }>,
@@ -81,6 +103,7 @@ export class DriverVideoPlayer {
     })).filter((source) => source.frames.length > 0);
     if (selected.length === 0) throw new Error("No indexed driver-camera frames overlap this clip.");
     this.playbackRouteStart = Math.min(...selected.flatMap((source) => source.frames.map((frame) => frame.routeSeconds)));
+    this.pendingSeekTime = Math.max(0, startSeconds - this.playbackRouteStart);
     const sourcePlans = selected.map((source) => {
       const allSourceFrames = segmentSources.find((candidate) => candidate.url === source.url)?.frames ?? source.frames;
       const firstSelected = source.frames[0];
@@ -145,7 +168,12 @@ export class DriverVideoPlayer {
         const wantedFrames = range.frames.filter((frame) => selectedFrames.has(frameKey(frame)) && !appendedFrames.has(frameKey(frame)));
         if (wantedFrames.length > 0 && initialized) {
           const fragmentStart = wantedFrames[0].routeSeconds - this.playbackRouteStart;
-          await waitForPlaybackDemand(this.video, fragmentStart, signal);
+          await waitForPlaybackDemand(
+            this.video,
+            fragmentStart,
+            signal,
+            () => (this.pendingSeekTime ?? this.video.currentTime) + BUFFER_AHEAD_SECONDS,
+          );
         }
         const bytes = await fetchRange(source.url, range.start, range.end, signal);
         completedRanges += 1;
@@ -198,6 +226,7 @@ export class DriverVideoPlayer {
           sequence += 1;
           decodeTime += samples.reduce((sum, sample) => sum + sample.duration, 0);
           await appendToSourceBuffer(sourceBuffer, fragment, signal);
+          this.applyPendingSeek();
           onFirstFragment();
         }
         await yieldToBrowser();
@@ -215,6 +244,18 @@ export class DriverVideoPlayer {
     if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
     this.objectUrl = null;
     this.mediaSource = null;
+    this.pendingSeekTime = null;
+    this.resumeAfterSeek = false;
+  }
+
+  private applyPendingSeek(): void {
+    if (this.pendingSeekTime === null || !isBuffered(this.video, this.pendingSeekTime, SEEK_BUFFER_CUSHION_SECONDS)) return;
+    const target = this.pendingSeekTime;
+    const shouldResume = this.resumeAfterSeek;
+    this.pendingSeekTime = null;
+    this.resumeAfterSeek = false;
+    this.video.currentTime = target;
+    if (shouldResume) void this.video.play();
   }
 }
 
@@ -438,13 +479,19 @@ function appendToSourceBuffer(sourceBuffer: SourceBuffer, bytes: Uint8Array<Arra
   });
 }
 
-async function waitForPlaybackDemand(video: HTMLVideoElement, fragmentStart: number, signal: AbortSignal): Promise<void> {
-  while (fragmentStart > video.currentTime + BUFFER_AHEAD_SECONDS) {
+async function waitForPlaybackDemand(
+  video: HTMLVideoElement,
+  fragmentStart: number,
+  signal: AbortSignal,
+  demandTime: () => number,
+): Promise<void> {
+  while (fragmentStart > demandTime()) {
     await new Promise<void>((resolve, reject) => {
       const cleanup = () => {
         video.removeEventListener("timeupdate", onDemand);
         video.removeEventListener("seeking", onDemand);
         video.removeEventListener("play", onDemand);
+        video.removeEventListener(VIDEO_DEMAND_EVENT, onDemand);
         signal.removeEventListener("abort", onAbort);
       };
       const onDemand = () => { cleanup(); resolve(); };
@@ -452,9 +499,19 @@ async function waitForPlaybackDemand(video: HTMLVideoElement, fragmentStart: num
       video.addEventListener("timeupdate", onDemand, { once: true });
       video.addEventListener("seeking", onDemand, { once: true });
       video.addEventListener("play", onDemand, { once: true });
+      video.addEventListener(VIDEO_DEMAND_EVENT, onDemand, { once: true });
       signal.addEventListener("abort", onAbort, { once: true });
     });
   }
+}
+
+function isBuffered(video: HTMLVideoElement, time: number, cushionSeconds = 0): boolean {
+  const duration = Number.isFinite(video.duration) ? video.duration : time + cushionSeconds;
+  const requiredEnd = Math.min(duration, time + cushionSeconds);
+  for (let index = 0; index < video.buffered.length; index += 1) {
+    if (time >= video.buffered.start(index) && requiredEnd <= video.buffered.end(index) - 0.01) return true;
+  }
+  return false;
 }
 
 function box(type: string, payload: Uint8Array): Uint8Array<ArrayBuffer> {

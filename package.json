@@ -10,6 +10,7 @@
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest run src --exclude src/dm.smoke.test.ts",
     "test:smoke": "node --env-file-if-exists=.env.local node_modules/vitest/vitest.mjs run src/dm.smoke.test.ts",
+    "pretest:browser": "pnpm build",
     "test:browser": "node --env-file-if-exists=.env.local node_modules/@playwright/test/cli.js test"
   },
   "dependencies": {

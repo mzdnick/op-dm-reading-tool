@@ -41,13 +41,22 @@ app.innerHTML = `
       <div><h2>HEVC requirement</h2><p id="codec-summary">Checking native HEVC playback…</p><p class="muted">Telemetry remains useful even when this browser cannot decode the uploaded driver video.</p></div>
     </section>
     <section class="policy-note">
-      <h2>Open source does not make comma's services unconditional</h2>
-      <p><a href="https://github.com/commaai/openpilot" target="_blank" rel="noreferrer">openpilot is open source</a>, and its MIT license permits you to inspect, change, and run the software. comma's hosted services have a separate safety policy: forks must not disable or weaken Driver Monitoring, and comma says violations can get a fork and its users <a href="https://github.com/commaai/openpilot/blob/master/docs/SAFETY.md#forks-of-openpilot" target="_blank" rel="noreferrer">banned from comma.ai servers</a>. Historically, bans have been associated with uploaded telemetry showing extended or nerfed DM timings and other attempts to bypass the safety policy. comma does not publish its complete detection rules.</p>
-      <p>A server ban does not rewrite your local code or brick the hardware. Instead, the device is marked <strong>Uploads ignored</strong>, and comma will not process its route data for <a href="https://connect.comma.ai" target="_blank" rel="noreferrer">comma Connect</a>. That greatly complicates sharing telemetry with fork communities and getting hardware help. comma requires hardware problems to be reproduced on current stock openpilot with a stock route before it will investigate them.</p>
-      <p>There is also a long-tail cost: ignored routes cannot contribute to the datasets comma uses to train future driving models. Historically, users have reported that comma would sometimes reverse a ban once per device as a courtesy. That is not a published entitlement or a promise that a current ban will be reversed.</p>
-      <h3>Having a Driver Monitoring problem?</h3>
-      <p>The supported path is to report an attentive false positive with evidence. <a href="https://discord.comma.ai" target="_blank" rel="noreferrer">Join comma's Discord</a>, temporarily enable driver-camera recording, reproduce the problem, and upload the exact logs and driver-camera segment in <a href="https://connect.comma.ai" target="_blank" rel="noreferrer">comma Connect</a>. The formal <a href="https://discord.com/channels/469524606043160576/1254834193066623017" target="_blank" rel="noreferrer">#driving-feedback</a> submission flow requires making the route public.</p>
-      <p>Driver-camera routes are understandably sensitive. If you do not want to make one public, post its exact <a href="https://connect.comma.ai" target="_blank" rel="noreferrer">Connect</a> link and timestamps in <a href="https://discord.com/channels/469524606043160576/616456819027607567" target="_blank" rel="noreferrer">#openpilot-experience</a> instead. Other Discord users cannot open the private route, but comma staff can inspect non-public route data already hosted on comma's service.</p>
+      <h2>Open code. Conditional services.</h2>
+      <p><a href="https://github.com/commaai/openpilot" target="_blank" rel="noreferrer">openpilot's MIT license</a> lets you inspect, change, and run the software. Access to comma's servers is separate.</p>
+      <ul class="policy-points">
+        <li><strong>Do not weaken DM if you use comma's services.</strong> comma's <a href="https://github.com/commaai/openpilot/blob/master/docs/SAFETY.md#forks-of-openpilot" target="_blank" rel="noreferrer">fork safety policy</a> says violations can get a fork and its users banned. Nerfed timings and other bypasses have historically been detected through uploaded telemetry; the complete rules are not public.</li>
+        <li><strong>A ban means “Uploads ignored.”</strong> The device still runs local software, but comma stops processing its routes for <a href="https://connect.comma.ai" target="_blank" rel="noreferrer">comma Connect</a>.</li>
+        <li><strong>The effects spread.</strong> Losing routes makes fork debugging and hardware support harder, and ignored drives cannot improve comma's future driving-model datasets.</li>
+      </ul>
+      <p class="policy-caveat">Users have historically reported one courtesy ban reversal per device. This is not a published right or a current guarantee.</p>
+      <div class="feedback-path">
+        <h3>DM false positive? Send evidence.</h3>
+        <ol>
+          <li>Enable driver-camera recording, reproduce the problem, and note the exact time.</li>
+          <li>Upload that log and driver-camera segment in <a href="https://connect.comma.ai" target="_blank" rel="noreferrer">comma Connect</a>.</li>
+          <li>For a public route, use <a href="https://discord.com/channels/469524606043160576/1254834193066623017" target="_blank" rel="noreferrer">#driving-feedback</a>. To keep sensitive driver video private, post the private link and timestamps in <a href="https://discord.com/channels/469524606043160576/616456819027607567" target="_blank" rel="noreferrer">#openpilot-experience</a>; comma staff can access it, other Discord users cannot.</li>
+        </ol>
+      </div>
       <p class="policy-sources">Sources: <a href="https://docs.comma.ai/contributing/feedback/" target="_blank" rel="noreferrer">comma's feedback guide</a> · <a href="https://comma.ai/support" target="_blank" rel="noreferrer">comma support policy</a></p>
     </section>
   </section>`;
@@ -342,7 +351,7 @@ function renderViewer(route: DriverDebugRoute): void {
   }
   scrubber.addEventListener("input", () => {
     const routeSeconds = Number(scrubber.value);
-    if (videoPlayer) video.currentTime = Math.max(0, routeSeconds - videoPlayer.playbackRouteStart);
+    videoPlayer?.seek(routeSeconds);
     renderTelemetry(routeSeconds);
   });
   playbackToggle.addEventListener("click", () => {
@@ -408,7 +417,6 @@ async function loadVideo(route: DriverDebugRoute): Promise<void> {
   }
   const seekToStart = () => {
     if (videoPlayer !== player || currentRoute !== route) return;
-    video.currentTime = Math.max(0, route.startSeconds - player.playbackRouteStart);
     byId<HTMLButtonElement>("playback-toggle").disabled = false;
     byId<HTMLElement>("video-placeholder").hidden = true;
     setProgress("Driver Monitoring debugger ready", 1);

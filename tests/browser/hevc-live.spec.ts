@@ -5,6 +5,11 @@ const commaJwt = process.env.COMMA_JWT;
 const liveTest = modernRoute && commaJwt ? test : test.skip;
 const routeBase = modernRoute?.replace(/\/\d+(?:\.\d+)?\/\d+(?:\.\d+)?\/?$/, "");
 const PUBLIC_MICI_ROUTE = "https://connect.comma.ai/5beb9b58bd12b691/0000010a--a51155e496";
+const PUBLIC_MICI_STRESS_CLIPS = [
+  { start: 247, end: 276, seek: 270 },
+  { start: 355, end: 375, seek: 372 },
+  { start: 600, end: 625, seek: 621 },
+];
 
 test.beforeEach(async ({ page }) => {
   if (!commaJwt) return;
@@ -72,4 +77,27 @@ test("scans Connect warning segments with the qlog worker pool", async ({ page }
   await expect(page.locator("#status-text")).toHaveText("Driver Monitoring debugger ready");
   await expect(page.locator("#route-clock")).toHaveText("10:36.0");
   await expect(page.locator("#driver-video")).toHaveJSProperty("readyState", 4);
+});
+
+test("seeks and plays across public Mici clips without poisoning SourceBuffer", async ({ page }) => {
+  test.setTimeout(120_000);
+  for (const clip of PUBLIC_MICI_STRESS_CLIPS) {
+    const url = `${PUBLIC_MICI_ROUTE}/${clip.start}/${clip.end}`;
+    await page.goto(`/?route=${encodeURIComponent(url)}`);
+    await expect(page.locator("#status-text")).toHaveText("Driver Monitoring debugger ready");
+    const video = page.locator("#driver-video");
+    await expect(video).toHaveJSProperty("readyState", 4);
+
+    await page.locator("#route-scrubber").fill(String(clip.seek));
+    await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime)).toBeGreaterThan(clip.seek - clip.start - 1);
+    await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.buffered.length ? element.buffered.end(0) : 0)).toBeGreaterThan(clip.seek - clip.start);
+    await expect(video).toHaveJSProperty("error", null);
+    await expect(page.locator("#status-text")).toHaveText("Driver Monitoring debugger ready");
+
+    const beforePlay = await video.evaluate((element: HTMLVideoElement) => element.currentTime);
+    await page.locator("#playback-toggle").click();
+    await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime)).toBeGreaterThan(beforePlay + 0.5);
+    await expect(video).toHaveJSProperty("error", null);
+    await page.locator("#playback-toggle").click();
+  }
 });

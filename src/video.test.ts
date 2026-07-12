@@ -7,6 +7,8 @@ describe("driver video range planning", () => {
     const frames = [frame(0, 0, true), frame(1, 100), frame(2, 200), frame(3, 300, true), frame(4, 400)];
     expect(framesForClip(frames, 0.18, 0.45).map((item) => item.encodeIndex)).toEqual([0, 1, 2, 3, 4]);
     expect(framesForClip(frames, 0.32, 0.45).map((item) => item.encodeIndex)).toEqual([3, 4]);
+    expect(framesForClip(frames, 1, 2)).toEqual([]);
+    expect(framesForClip(frames, -2, -1)).toEqual([]);
   });
 
   it("keeps HEVC NAL units continuous inside a fetched byte stream", () => {
@@ -20,7 +22,7 @@ describe("driver video range planning", () => {
   it("uses the memory target without splitting a decodable GOP", () => {
     const frames = [frame(0, 0, true, 100), frame(1, 100, false, 100), frame(2, 200, true, 100)];
     expect(planVideoRanges(frames, 220)).toEqual([
-      { start: 0, end: 199, frames: frames.slice(0, 2) },
+      { start: 0, end: 299, frames: frames.slice(0, 2) },
       { start: 200, end: 299, frames: frames.slice(2) },
     ]);
 
