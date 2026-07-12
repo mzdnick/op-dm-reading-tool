@@ -23,6 +23,8 @@ token intact so an API outage does not destroy credentials.
 openpilot uploads driver video as raw HEVC/H.265. This app downloads only the
 keyframe-aligned byte ranges needed for the selected clip and remuxes those
 encoded bytes into fragmented MP4 in memory. It does not transcode the video.
+Video loading is on demand: clip telemetry renders first, and no driver-camera
+bytes are fetched or remuxed until **Load driver video** is selected.
 
 Your browser, operating system, and hardware must therefore provide native HEVC
 decoding. The app checks this before loading video
@@ -37,8 +39,9 @@ footage is sensitive: check what is visible before sharing your screen or route.
 1. Open the drive in [comma Connect](https://connect.comma.ai/).
 2. Under **More info**, enable **Public access**, or use the JWT option in this
    app for a private route.
-3. Paste the Connect URL. URLs ending in `/start/end` load that clip range; a
-   bare route URL defaults to the first 30 seconds.
+3. Paste the Connect URL. URLs ending in `/start/end` load that clip range. A
+   bare route scans its Connect warning timeline and qlogs, prioritizing orange
+   and red intervals before the rest of the drive.
 
 Accepted inputs include:
 
@@ -50,6 +53,11 @@ https://connect.comma.ai/<dongle-id>/<route-id>/90/120
 
 The parser supports both the legacy flat Driver Monitoring state and the modern
 policy-based state (`visionPolicyState` and `wheeltouchPolicyState`).
+
+Route scans fetch each segment's small `events.json` first, then use a bounded
+two-worker pool to download, decompress, and decode qlogs in warning-first
+order. Results appear progressively, and starting another route cancels the
+previous scan. Selecting a result loads a padded video clip around that event.
 
 For fast browsing, the app uses qlogs by default (roughly 2 Hz DM telemetry).
 Enable **High-resolution DM telemetry** to prefer an available rlog and inspect

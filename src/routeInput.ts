@@ -7,6 +7,7 @@ export interface ParsedRouteInput {
   source: "route" | "connect-url";
   startSeconds: number;
   endSeconds: number;
+  explicitClipRange: boolean;
 }
 
 export const DEFAULT_CLIP_START_SECONDS = 0;
@@ -33,6 +34,7 @@ export function parseRouteInput(input: string): ParsedRouteInput {
       source: "connect-url",
       startSeconds,
       endSeconds,
+      explicitClipRange: parts.length >= 4,
     };
   }
 
@@ -49,6 +51,7 @@ export function parseRouteInput(input: string): ParsedRouteInput {
     source: "route",
     startSeconds: DEFAULT_CLIP_START_SECONDS,
     endSeconds: DEFAULT_CLIP_END_SECONDS,
+    explicitClipRange: false,
   };
 }
 

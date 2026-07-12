@@ -25,6 +25,8 @@ export interface RouteInfo {
   gitCommit?: string;
   git_branch?: string;
   gitBranch?: string;
+  url?: string;
+  duration?: number;
 }
 
 export async function fetchRouteFiles(routeName: string): Promise<RouteFiles> {

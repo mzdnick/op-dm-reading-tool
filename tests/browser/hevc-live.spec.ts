@@ -4,6 +4,7 @@ const modernRoute = process.env.COMMA_TEST_ROUTE;
 const commaJwt = process.env.COMMA_JWT;
 const liveTest = modernRoute && commaJwt ? test : test.skip;
 const routeBase = modernRoute?.replace(/\/\d+(?:\.\d+)?\/\d+(?:\.\d+)?\/?$/, "");
+const PUBLIC_MICI_ROUTE = "https://connect.comma.ai/5beb9b58bd12b691/0000010a--a51155e496";
 
 test.beforeEach(async ({ page }) => {
   if (!commaJwt) return;
@@ -14,8 +15,11 @@ test.beforeEach(async ({ page }) => {
 
 liveTest("remuxes and plays the private modern driver-camera clip", async ({ page }) => {
   await page.goto(`/?route=${encodeURIComponent(modernRoute!)}`);
-  await expect(page.locator("#status-text")).toHaveText("Driver Monitoring debugger ready");
+  await expect(page.locator("#status-text")).toHaveText("Telemetry ready · load driver video when needed");
   const video = page.locator("#driver-video");
+  await expect(video).toHaveJSProperty("readyState", 0);
+  await page.locator("#load-video-button").click();
+  await expect(page.locator("#status-text")).toHaveText("Driver Monitoring debugger ready");
   await expect(video).toHaveJSProperty("videoWidth", 1928);
   await expect(video).toHaveJSProperty("videoHeight", 1208);
   await expect(video).toHaveJSProperty("readyState", 4);
@@ -30,6 +34,8 @@ liveTest("remuxes and plays the private modern driver-camera clip", async ({ pag
 liveTest("starts an interior clip on a complete keyframe", async ({ page }) => {
   const interiorClip = `${routeBase}/90/95`;
   await page.goto(`/?route=${encodeURIComponent(interiorClip)}`);
+  await expect(page.locator("#status-text")).toHaveText("Telemetry ready · load driver video when needed");
+  await page.locator("#load-video-button").click();
   await expect(page.locator("#status-text")).toHaveText("Driver Monitoring debugger ready");
   const video = page.locator("#driver-video");
   await expect(video).toHaveJSProperty("readyState", 4);
@@ -43,8 +49,11 @@ liveTest("loads high-resolution DM telemetry from the rlog", async ({ page }) =>
   await page.locator("#high-resolution-telemetry").check();
   await page.locator("#route-input").fill(modernRoute!);
   await page.locator("#load-button").click();
-  await expect(page.locator("#status-text")).toHaveText("Driver Monitoring debugger ready");
+  await expect(page.locator("#status-text")).toHaveText("Telemetry ready · load driver video when needed");
   await expect(page.locator(".route-meta")).toContainText("rlogs · 20 Hz");
+  await expect(page.locator("#driver-video")).toHaveJSProperty("readyState", 0);
+  await page.locator("#load-video-button").click();
+  await expect(page.locator("#status-text")).toHaveText("Driver Monitoring debugger ready");
   await expect(page.locator("#driver-video")).toHaveJSProperty("readyState", 4);
 });
 
@@ -54,4 +63,18 @@ liveTest("restores and verifies a persisted comma JWT", async ({ page }) => {
   await page.reload();
   await expect(page.locator("#auth-panel")).toContainText("JWT persisted in this browser");
   await expect(page.locator("#auth-panel")).toContainText("Verified with comma");
+});
+
+test("scans Connect warning segments with the qlog worker pool", async ({ page }) => {
+  await page.goto(`/?route=${encodeURIComponent(PUBLIC_MICI_ROUTE)}`);
+  await expect(page.locator(".scan-list")).toContainText("Orange system warning");
+  await expect(page.locator("#status-text")).toContainText("Scan complete", { timeout: 90_000 });
+  await expect(page.locator(".scan-count")).toContainText("16/16");
+
+  const firstOrange = page.locator(".scan-result.severity-warning").filter({ hasText: "10:44.2" });
+  await expect(firstOrange).toHaveCount(1);
+  await firstOrange.click();
+  await expect(page.locator("#status-text")).toHaveText("Telemetry ready · load driver video when needed");
+  await expect(page.locator("#route-clock")).toHaveText("10:36.0");
+  await expect(page.locator("#driver-video")).toHaveJSProperty("readyState", 0);
 });

@@ -24,7 +24,14 @@ describe("route parsing", () => {
       source: "connect-url",
       startSeconds: 90,
       endSeconds: 105,
+      explicitClipRange: true,
     });
+  });
+
+  it("distinguishes bare routes from explicit clips", () => {
+    expect(parseRouteInput("5beb9b58bd12b691|0000010a--a51155e496").explicitClipRange).toBe(false);
+    expect(parseRouteInput("https://connect.comma.ai/5beb9b58bd12b691/0000010a--a51155e496").explicitClipRange).toBe(false);
+    expect(parseRouteInput("https://connect.comma.ai/5beb9b58bd12b691/0000010a--a51155e496/10/20").explicitClipRange).toBe(true);
   });
 
   it("extracts segment numbers from signed log URLs", () => {
