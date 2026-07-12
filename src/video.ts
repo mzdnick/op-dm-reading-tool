@@ -1,7 +1,8 @@
 import { createFile } from "mp4box";
 import type { DriverVideoFrameIndex } from "./dm";
 
-const MAX_RANGE_BYTES = 2 * 1024 * 1024;
+const MAX_RANGE_BYTES = 512 * 1024;
+const BUFFER_AHEAD_SECONDS = 8;
 const HEVC_CODEC = "hvc1.1.6.L153.B0";
 const TIMESCALE = 10_240;
 
@@ -23,7 +24,7 @@ export function detectHevcSupport(): HevcSupport {
   const mime = `video/mp4; codecs="${HEVC_CODEC}"`;
   const mediaSource = typeof MediaSource !== "undefined" && MediaSource.isTypeSupported(mime);
   const htmlVideo = video.canPlayType(mime) !== "";
-  return { mediaSource, htmlVideo, supported: htmlVideo, codec: HEVC_CODEC };
+  return { mediaSource, htmlVideo, supported: mediaSource && htmlVideo, codec: HEVC_CODEC };
 }
 
 export function framesForClip(frames: DriverVideoFrameIndex[], startSeconds: number, endSeconds: number): DriverVideoFrameIndex[] {
@@ -45,7 +46,9 @@ export function planVideoRanges(frames: DriverVideoFrameIndex[], maxBytes = MAX_
   for (const frame of frames) {
     const previous = ranges.at(-1);
     const frameEnd = frame.byteOffset + frame.byteLength - 1;
-    if (previous && frame.byteOffset === previous.end + 1 && frameEnd - previous.start + 1 <= maxBytes) {
+    const contiguous = previous && frame.byteOffset === previous.end + 1;
+    const exceedsTarget = previous && frameEnd - previous.start + 1 > maxBytes;
+    if (previous && contiguous && (!exceedsTarget || !frame.keyframe)) {
       previous.end = frameEnd;
       previous.frames.push(frame);
     } else {
@@ -57,6 +60,7 @@ export function planVideoRanges(frames: DriverVideoFrameIndex[], maxBytes = MAX_
 
 export class DriverVideoPlayer {
   private abortController: AbortController | null = null;
+  private mediaSource: MediaSource | null = null;
   private objectUrl: string | null = null;
   playbackRouteStart = 0;
 
@@ -67,6 +71,7 @@ export class DriverVideoPlayer {
     startSeconds: number,
     endSeconds: number,
     onProgress: (message: string, fraction: number) => void,
+    onBackgroundError: (error: unknown) => void = () => {},
   ): Promise<void> {
     this.destroy();
     this.abortController = new AbortController();
@@ -89,32 +94,71 @@ export class DriverVideoPlayer {
       ];
       return { source, ranges: planVideoRanges(downloadFrames) };
     });
-    const totalRanges = sourcePlans.reduce((sum, plan) => sum + plan.ranges.length, 0);
+    const signal = this.abortController.signal;
+    const mediaSource = new MediaSource();
+    this.mediaSource = mediaSource;
+    this.objectUrl = URL.createObjectURL(mediaSource);
+    this.video.src = this.objectUrl;
+    this.video.load();
+    await waitForMediaSourceOpen(mediaSource, signal);
+    mediaSource.duration = Math.max(0.1, endSeconds - this.playbackRouteStart);
+    const sourceBuffer = mediaSource.addSourceBuffer(`video/mp4; codecs="${HEVC_CODEC}"`);
 
-    let mp4: ReturnType<typeof createFile> | null = null;
-    let trackId: number | null = null;
-    let dts = 0;
-    const samples: Array<{ data: Uint8Array<ArrayBuffer>; duration: number; keyframe: boolean; compositionOffset: number }> = [];
+    let firstFragmentSettled = false;
+    let resolveFirstFragment!: () => void;
+    let rejectFirstFragment!: (error: unknown) => void;
+    const firstFragment = new Promise<void>((resolve, reject) => {
+      resolveFirstFragment = resolve;
+      rejectFirstFragment = reject;
+    });
+    void this.pumpFragments(sourcePlans, sourceBuffer, onProgress, signal, () => {
+      if (firstFragmentSettled) return;
+      firstFragmentSettled = true;
+      resolveFirstFragment();
+    }).catch((error) => {
+      if (!firstFragmentSettled) {
+        firstFragmentSettled = true;
+        rejectFirstFragment(error);
+      } else if (!signal.aborted) onBackgroundError(error);
+    });
+    await firstFragment;
+  }
+
+  private async pumpFragments(
+    sourcePlans: Array<{ source: { url: string; frames: DriverVideoFrameIndex[] }; ranges: PlannedVideoRange[] }>,
+    sourceBuffer: SourceBuffer,
+    onProgress: (message: string, fraction: number) => void,
+    signal: AbortSignal,
+    onFirstFragment: () => void,
+  ): Promise<void> {
+    const totalRanges = sourcePlans.reduce((sum, plan) => sum + plan.ranges.length, 0);
+    const selectedFrames = new Set(sourcePlans.flatMap(({ source }) => source.frames.map(frameKey)));
+    const appendedFrames = new Set<string>();
     let completedRanges = 0;
+    let trackId: number | null = null;
+    let decodeTime = 0;
+    let sequence = 1;
+    let initialized = false;
 
     for (const { source, ranges } of sourcePlans) {
-      const chunks: Uint8Array[] = [];
       for (const range of ranges) {
-        chunks.push(await fetchRange(source.url, range.start, range.end, this.abortController.signal));
+        const wantedFrames = range.frames.filter((frame) => selectedFrames.has(frameKey(frame)) && !appendedFrames.has(frameKey(frame)));
+        if (wantedFrames.length > 0 && initialized) {
+          const fragmentStart = wantedFrames[0].routeSeconds - this.playbackRouteStart;
+          await waitForPlaybackDemand(this.video, fragmentStart, signal);
+        }
+        const bytes = await fetchRange(source.url, range.start, range.end, signal);
         completedRanges += 1;
-        onProgress(`Reading driver video (${completedRanges}/${totalRanges} chunks)`, completedRanges / totalRanges);
-        await yieldToBrowser();
-      }
-      const streamNalus = splitAnnexB(concatBytes(...chunks));
-      let configNalus = streamNalus;
-      if (!hasHevcConfig(configNalus)) {
-        const headerBytes = await fetchRange(source.url, 0, 256 * 1024 - 1, this.abortController.signal);
-        configNalus = splitAnnexB(headerBytes);
-      }
-      if (!mp4 || trackId === null) {
+        onProgress(`Buffering driver video (${completedRanges}/${totalRanges} chunks)`, completedRanges / totalRanges);
+        const streamNalus = splitAnnexB(bytes);
+        if (!initialized) {
+          let configNalus = streamNalus;
+          if (!hasHevcConfig(configNalus)) {
+            configNalus = splitAnnexB(await fetchRange(source.url, 0, 256 * 1024 - 1, signal));
+          }
           const config = buildHevcConfig(configNalus);
           const size = readHevcDimensions(config.sps);
-          mp4 = createFile();
+          const mp4 = createFile();
           mp4.init({ brands: ["iso6", "isom", "mp41"], timescale: TIMESCALE, duration: 0 });
           trackId = mp4.addTrack({
             type: "hvc1",
@@ -126,39 +170,40 @@ export class DriverVideoPlayer {
             hevcDecoderConfigRecord: config.record.buffer as ArrayBuffer,
           });
           if (!trackId) throw new Error("Could not create the HEVC MP4 track.");
+          reorderMoovForCompatibility(mp4);
+          const stream = mp4.getBuffer();
+          const init = new Uint8Array(stream.buffer.slice(0, stream.byteLength));
+          patchHvcCReservedBits(init);
+          await appendToSourceBuffer(sourceBuffer, init, signal);
+          initialized = true;
+        }
+        const accessUnits = groupAccessUnits(streamNalus);
+        if (accessUnits.length < range.frames.length) {
+          throw new Error(`HEVC chunk ended after ${accessUnits.length}/${range.frames.length} indexed frames.`);
+        }
+        const samples = range.frames.flatMap((frame, index) => {
+          const key = frameKey(frame);
+          if (!selectedFrames.has(key) || appendedFrames.has(key)) return [];
+          appendedFrames.add(key);
+          const unit = accessUnits[index];
+          return [{
+            data: annexBToLengthPrefixed(unit.nalus),
+            duration: Math.max(1, Math.round(frame.durationMs * TIMESCALE / 1_000)),
+            keyframe: unit.keyframe,
+            compositionOffset: Math.round(frame.compositionTimeOffsetMs * TIMESCALE / 1_000),
+          }];
+        });
+        if (samples.length > 0 && trackId !== null) {
+          const fragment = makeFragment(trackId, sequence, decodeTime, samples);
+          sequence += 1;
+          decodeTime += samples.reduce((sum, sample) => sum + sample.duration, 0);
+          await appendToSourceBuffer(sourceBuffer, fragment, signal);
+          onFirstFragment();
+        }
+        await yieldToBrowser();
       }
-      const accessUnits = groupAccessUnits(streamNalus);
-      const firstKeyframe = accessUnits.findIndex((unit) => unit.keyframe);
-      const usableUnits = accessUnits.slice(Math.max(0, firstKeyframe), Math.max(0, firstKeyframe) + source.frames.length);
-      if (usableUnits.length < source.frames.length) {
-        throw new Error(`HEVC stream ended after ${usableUnits.length}/${source.frames.length} indexed frames.`);
-      }
-      for (let index = 0; index < usableUnits.length; index += 1) {
-        const frame = source.frames[index];
-        const unit = usableUnits[index];
-        const sample = annexBToLengthPrefixed(unit.nalus);
-        const duration = Math.max(1, Math.round(frame.durationMs * TIMESCALE / 1_000));
-        samples.push({ data: sample, duration, keyframe: unit.keyframe, compositionOffset: Math.round(frame.compositionTimeOffsetMs * TIMESCALE / 1_000) });
-        dts += duration;
     }
-    }
-
-    if (!mp4 || trackId === null) throw new Error("No HEVC samples were remuxed.");
-    reorderMoovForCompatibility(mp4);
-    const stream = mp4.getBuffer();
-    const init = new Uint8Array(stream.buffer.slice(0, stream.byteLength));
-    patchHvcCReservedBits(init);
-    let decodeTime = 0;
-    const groups = groupSamplesByKeyframe(samples);
-    const fragments = groups.map((group, index) => {
-      const fragment = makeFragment(trackId, index + 1, decodeTime, group);
-      decodeTime += group.reduce((sum, sample) => sum + sample.duration, 0);
-      return fragment;
-    });
-    const output = concatBytes(init, ...fragments);
-    this.objectUrl = URL.createObjectURL(new Blob([output], { type: `video/mp4; codecs="${HEVC_CODEC}"` }));
-    this.video.src = this.objectUrl;
-    this.video.load();
+    if (this.mediaSource?.readyState === "open" && !sourceBuffer.updating) this.mediaSource.endOfStream();
   }
 
   destroy(): void {
@@ -169,6 +214,7 @@ export class DriverVideoPlayer {
     this.video.load();
     if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
     this.objectUrl = null;
+    this.mediaSource = null;
   }
 }
 
@@ -352,13 +398,63 @@ function makeFragment(
   return concatBytes(moof, box("mdat", concatBytes(...samples.map((sample) => sample.data))));
 }
 
-function groupSamplesByKeyframe<T extends { keyframe: boolean }>(samples: T[]): T[][] {
-  const groups: T[][] = [];
-  for (const sample of samples) {
-    if (sample.keyframe || groups.length === 0) groups.push([]);
-    groups.at(-1)!.push(sample);
+function frameKey(frame: DriverVideoFrameIndex): string {
+  return `${frame.segment}:${frame.presentationIndex}`;
+}
+
+function waitForMediaSourceOpen(mediaSource: MediaSource, signal: AbortSignal): Promise<void> {
+  if (mediaSource.readyState === "open") return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      mediaSource.removeEventListener("sourceopen", onOpen);
+      signal.removeEventListener("abort", onAbort);
+    };
+    const onOpen = () => { cleanup(); resolve(); };
+    const onAbort = () => { cleanup(); reject(new DOMException("Video loading aborted", "AbortError")); };
+    mediaSource.addEventListener("sourceopen", onOpen, { once: true });
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function appendToSourceBuffer(sourceBuffer: SourceBuffer, bytes: Uint8Array<ArrayBuffer>, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      sourceBuffer.removeEventListener("updateend", onUpdateEnd);
+      sourceBuffer.removeEventListener("error", onError);
+      signal.removeEventListener("abort", onAbort);
+    };
+    const onUpdateEnd = () => { cleanup(); resolve(); };
+    const onError = () => { cleanup(); reject(new Error("The browser rejected a remuxed video fragment.")); };
+    const onAbort = () => { cleanup(); reject(new DOMException("Video loading aborted", "AbortError")); };
+    sourceBuffer.addEventListener("updateend", onUpdateEnd, { once: true });
+    sourceBuffer.addEventListener("error", onError, { once: true });
+    signal.addEventListener("abort", onAbort, { once: true });
+    try {
+      sourceBuffer.appendBuffer(bytes);
+    } catch (error) {
+      cleanup();
+      reject(error);
+    }
+  });
+}
+
+async function waitForPlaybackDemand(video: HTMLVideoElement, fragmentStart: number, signal: AbortSignal): Promise<void> {
+  while (fragmentStart > video.currentTime + BUFFER_AHEAD_SECONDS) {
+    await new Promise<void>((resolve, reject) => {
+      const cleanup = () => {
+        video.removeEventListener("timeupdate", onDemand);
+        video.removeEventListener("seeking", onDemand);
+        video.removeEventListener("play", onDemand);
+        signal.removeEventListener("abort", onAbort);
+      };
+      const onDemand = () => { cleanup(); resolve(); };
+      const onAbort = () => { cleanup(); reject(new DOMException("Video loading aborted", "AbortError")); };
+      video.addEventListener("timeupdate", onDemand, { once: true });
+      video.addEventListener("seeking", onDemand, { once: true });
+      video.addEventListener("play", onDemand, { once: true });
+      signal.addEventListener("abort", onAbort, { once: true });
+    });
   }
-  return groups;
 }
 
 function box(type: string, payload: Uint8Array): Uint8Array<ArrayBuffer> {

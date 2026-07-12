@@ -13,8 +13,12 @@ boxes over the synchronized camera feed.
 Everything runs in the browser. Route logs, video, and JWTs are not uploaded to
 this project or a project-owned backend.
 
-JWTs entered in the private-route panel are persisted in that browser's local
-storage and verified against comma's `/v1/me/` endpoint when saved and restored.
+The **Authenticate to comma with a JWT** panel explains that JWT authentication
+opens private routes and, for device owners, permits missing-file upload
+requests. JWTs are persisted in that browser's local storage and verified
+against comma's `/v1/me/` endpoint when saved and restored.
+Tokens can be created at [jwt.comma.ai](https://jwt.comma.ai). Public routes do
+not require authentication.
 Rejected tokens are removed; temporary verification failures leave the local
 token intact so an API outage does not destroy credentials.
 
@@ -23,8 +27,10 @@ token intact so an API outage does not destroy credentials.
 openpilot uploads driver video as raw HEVC/H.265. This app downloads only the
 keyframe-aligned byte ranges needed for the selected clip and remuxes those
 encoded bytes into fragmented MP4 in memory. It does not transcode the video.
-Video loading is on demand: clip telemetry renders first, and no driver-camera
-bytes are fetched or remuxed until **Load driver video** is selected.
+Video loading begins automatically after clip telemetry renders. The player
+downloads keyframe-aligned ranges incrementally, appends remuxed MP4 fragments
+through Media Source Extensions, and keeps a small buffer ahead of playback.
+The full clip is not assembled into one large in-memory blob before playback.
 
 Your browser, operating system, and hardware must therefore provide native HEVC
 decoding. The app checks this before loading video
@@ -34,11 +40,16 @@ large WebAssembly decoder or server transcoding fallback in the first version.
 Driver camera recording must have been enabled on the device. Driver-camera
 footage is sensitive: check what is visible before sharing your screen or route.
 
+If a clip's driver video has not uploaded yet, an owner JWT can request only the
+missing `dcamera.hevc` segments from the device. The app queues the request
+through comma Athena, watches until the files appear, and then opens the clip.
+Offline requests wait for the device to reconnect; uploads are Wi-Fi-only.
+
 ## Using the debugger
 
 1. Open the drive in [comma Connect](https://connect.comma.ai/).
-2. Under **More info**, enable **Public access**, or use the JWT option in this
-   app for a private route.
+2. Under **More info**, enable **Public access**, or authenticate to comma with
+   a JWT in this app for a private route.
 3. Paste the Connect URL. URLs ending in `/start/end` load that clip range. A
    bare route scans its Connect warning timeline and qlogs, prioritizing orange
    and red intervals before the rest of the drive.
@@ -51,8 +62,14 @@ https://connect.comma.ai/<dongle-id>/<route-id>
 https://connect.comma.ai/<dongle-id>/<route-id>/90/120
 ```
 
-The parser supports both the legacy flat Driver Monitoring state and the modern
+The parser supports both the earlier flat Driver Monitoring state and the modern
 policy-based state (`visionPolicyState` and `wheeltouchPolicyState`).
+
+For clip views, the app reports the route's openpilot version and recording
+date. When the route commit exists in commaai/openpilot, it also looks up when
+the Driver Monitoring model artifact was last changed at that commit. The logs
+do not include a standalone DM model name or hash, so the app labels this as
+provenance instead of guessing a model generation.
 
 Route scans fetch each segment's small `events.json` first, then use a bounded
 two-worker pool to download, decompress, and decode qlogs in warning-first

@@ -25,6 +25,8 @@ export interface RouteInfo {
   gitCommit?: string;
   git_branch?: string;
   gitBranch?: string;
+  start_time?: string;
+  startTime?: string;
   url?: string;
   duration?: number;
 }

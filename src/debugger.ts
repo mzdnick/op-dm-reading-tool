@@ -26,6 +26,16 @@ export interface DriverDebugRoute {
   segments: DriverDebugSegment[];
 }
 
+export class MissingDriverVideoError extends Error {
+  constructor(
+    readonly routeName: string,
+    readonly segments: number[],
+  ) {
+    super("No driver-camera video is uploaded for this clip.");
+    this.name = "MissingDriverVideoError";
+  }
+}
+
 export async function loadDriverDebugRoute(
   input: string,
   onProgress: (progress: DebugLoadProgress) => void = () => {},
@@ -39,12 +49,15 @@ export async function loadDriverDebugRoute(
   if (logSource === "none") throw new Error("No qlogs or rlogs are uploaded for this route.");
   const logUrls = new Map(orderedLogUrls(files, highResolutionRequested).map((url) => [segmentFromUrl(url), url]));
   const dcameraUrls = new Map(orderedDcameraUrls(files).map((url) => [segmentFromUrl(url), url]));
-  if (dcameraUrls.size === 0) throw new Error("No driver-camera video is uploaded for this route. Enable driver camera recording before the drive.");
 
   const historyStart = Math.max(0, parsed.startSeconds - 20);
   const firstSegment = Math.floor(historyStart / 60);
   const lastSegment = Math.floor(Math.max(parsed.startSeconds, parsed.endSeconds - 0.001) / 60);
   const wantedSegments = Array.from({ length: lastSegment - firstSegment + 1 }, (_, index) => firstSegment + index);
+  const videoFirstSegment = Math.floor(parsed.startSeconds / 60);
+  const videoSegments = Array.from({ length: lastSegment - videoFirstSegment + 1 }, (_, index) => videoFirstSegment + index);
+  const missingVideoSegments = videoSegments.filter((segment) => !dcameraUrls.has(segment));
+  if (missingVideoSegments.length > 0) throw new MissingDriverVideoError(parsed.routeName, missingVideoSegments);
   const decoded: DriverDebugSegment[] = [];
 
   for (let index = 0; index < wantedSegments.length; index += 1) {

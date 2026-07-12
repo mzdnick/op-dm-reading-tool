@@ -1,10 +1,12 @@
 import "./styles.css";
 import { checkAccessToken, completeAuthCallback, isSignedIn, setAccessToken, signOut, type AuthCheckResult } from "./auth";
-import { loadDriverDebugRoute, type DriverDebugRoute } from "./debugger";
+import { loadDriverDebugRoute, MissingDriverVideoError, type DriverDebugRoute } from "./debugger";
 import { sampleAt, selectDriver, type DriverModelData, type DriverMonitoringSample } from "./dm";
+import { formatModelProvenance, modelProvenanceDetails, resolveDmModelProvenance, routeModelProvenance } from "./modelProvenance";
 import { buildAuthCallbackCleanUrl, buildRouteShareUrl, parseRouteInput, routeInputFromUrl } from "./routeInput";
 import { scanDriverMonitoringRoute, type RouteScanUpdate } from "./scan";
 import type { ScanFinding } from "./scanLogic";
+import { buildDriverVideoUploadRequest, queueDriverVideoUpload, watchDriverVideoUpload } from "./uploads";
 import { DriverVideoPlayer, detectHevcSupport } from "./video";
 
 const app = document.querySelector<HTMLDivElement>("#app");
@@ -57,6 +59,7 @@ byId<HTMLElement>("codec-summary").textContent = support.supported
 let currentRoute: DriverDebugRoute | null = null;
 let videoPlayer: DriverVideoPlayer | null = null;
 let currentScanController: AbortController | null = null;
+let currentUploadController: AbortController | null = null;
 let authCheck: AuthCheckResult = isSignedIn() ? { status: "checking" } : { status: "missing" };
 
 renderAuthPanel();
@@ -70,6 +73,7 @@ shareButton.addEventListener("click", () => void navigator.clipboard.writeText(w
 authPanel.addEventListener("click", (event) => {
   const target = event.target as HTMLElement;
   if (target.closest("#sign-out-button")) {
+    cancelCurrentUploadWatch();
     signOut();
     authCheck = { status: "missing" };
     renderAuthPanel();
@@ -120,6 +124,7 @@ async function handleRouteInput(routeInput: string, updateHistory: boolean): Pro
 
 async function scanRoute(routeInput: string, updateHistory: boolean): Promise<void> {
   cancelCurrentScan();
+  cancelCurrentUploadWatch();
   videoPlayer?.destroy();
   videoPlayer = null;
   currentRoute = null;
@@ -149,6 +154,7 @@ async function scanRoute(routeInput: string, updateHistory: boolean): Promise<vo
 
 async function loadRoute(routeInput: string, updateHistory: boolean): Promise<void> {
   cancelCurrentScan();
+  cancelCurrentUploadWatch();
   setBusy(true);
   viewer.hidden = true;
   videoPlayer?.destroy();
@@ -166,17 +172,70 @@ async function loadRoute(routeInput: string, updateHistory: boolean): Promise<vo
       shareButton.disabled = false;
     }
     renderViewer(result);
+    void updateModelProvenance(result);
     setProgress(
       support.supported
-        ? "Telemetry ready · load driver video when needed"
+        ? "Telemetry ready · preparing driver video"
         : "Telemetry ready · driver video is unavailable because native HEVC is unsupported",
       1,
       !support.supported,
     );
+    if (support.supported) void loadRequestedVideo(result);
   } catch (error) {
-    setProgress(error instanceof Error ? error.message : String(error), 1, true);
+    if (error instanceof MissingDriverVideoError) {
+      renderMissingDriverVideo(error, routeInput);
+      setProgress("Driver-camera video is not uploaded for this clip", 1, true);
+    } else {
+      setProgress(error instanceof Error ? error.message : String(error), 1, true);
+    }
   } finally {
     setBusy(false);
+  }
+}
+
+function renderMissingDriverVideo(error: MissingDriverVideoError, routeInput: string): void {
+  viewer.hidden = false;
+  const segmentLabel = error.segments.length === 1 ? `segment ${error.segments[0]}` : `${error.segments.length} clip segments`;
+  viewer.innerHTML = `<section class="missing-video">
+    <h2>Driver video is not uploaded</h2>
+    <p>The selected ${segmentLabel} may still be on the device. Driver-camera recording must have been enabled when this drive occurred.</p>
+    ${isSignedIn()
+      ? `<button id="queue-video-upload" type="button">Request upload from device</button><small>Queues over comma Athena, waits for Wi-Fi, and opens the clip automatically when ready.</small>`
+      : `<p class="muted">Authenticate above with the device owner's comma JWT to request the missing file.</p>`}
+  </section>`;
+  if (!isSignedIn()) return;
+  byId<HTMLButtonElement>("queue-video-upload").addEventListener("click", () => {
+    void queueAndWatchDriverVideo(error, routeInput);
+  });
+}
+
+async function queueAndWatchDriverVideo(error: MissingDriverVideoError, routeInput: string): Promise<void> {
+  cancelCurrentUploadWatch();
+  const controller = new AbortController();
+  currentUploadController = controller;
+  const button = byId<HTMLButtonElement>("queue-video-upload");
+  button.disabled = true;
+  button.textContent = "Requesting upload…";
+  const request = buildDriverVideoUploadRequest(error.routeName, error.segments);
+  try {
+    const queued = await queueDriverVideoUpload(request);
+    if (currentUploadController !== controller) return;
+    button.textContent = "Watching upload…";
+    setProgress(queued, 0.08);
+    await watchDriverVideoUpload(request, ({ message, progress }) => {
+      if (currentUploadController !== controller) return;
+      setProgress(message, 0.08 + (progress ?? 0) * 0.92);
+    }, controller.signal);
+    if (currentUploadController !== controller) return;
+    currentUploadController = null;
+    setProgress("Driver video uploaded · opening clip", 1);
+    await loadRoute(routeInput, false);
+  } catch (uploadError) {
+    if (controller.signal.aborted || currentUploadController !== controller) return;
+    currentUploadController = null;
+    button.disabled = false;
+    button.textContent = "Try upload again";
+    setProgress(uploadError instanceof Error ? uploadError.message : String(uploadError), 1, true);
   }
 }
 
@@ -213,27 +272,35 @@ function cancelCurrentScan(): void {
   currentScanController = null;
 }
 
+function cancelCurrentUploadWatch(): void {
+  currentUploadController?.abort();
+  currentUploadController = null;
+}
+
 function renderViewer(route: DriverDebugRoute): void {
   const duration = route.endSeconds - route.startSeconds;
+  const initialProvenance = routeModelProvenance(route.routeInfo);
   viewer.hidden = false;
   viewer.innerHTML = `
     <header class="viewer-header">
       <h2>${escapeHtml(route.routeName)}</h2>
-      <div class="route-meta"><span>${formatTime(route.startSeconds)}–${formatTime(route.endSeconds)}</span><span>${route.logSource} · ${formatHz(route.telemetryHz)}</span><span>${route.monitoring[0]?.schema ?? "unknown"} DM</span>${route.highResolutionRequested && route.logSource === "qlogs" ? "<span>rlog unavailable</span>" : ""}</div>
+      <div class="route-meta"><span>${formatTime(route.startSeconds)}–${formatTime(route.endSeconds)}</span><span>${route.logSource} · ${formatHz(route.telemetryHz)}</span>${route.highResolutionRequested && route.logSource === "qlogs" ? "<span>rlog unavailable</span>" : ""}</div>
     </header>
+    <p id="model-provenance" class="model-provenance">${escapeHtml(formatModelProvenance(initialProvenance, true))}</p>
     <div class="video-shell">
-      <video id="driver-video" muted playsinline controls></video>
+      <video id="driver-video" muted playsinline></video>
       <div class="model-input-frame" aria-hidden="true"></div>
       <div id="driver-box" class="face-box driver-box" hidden><span>DRIVER SEAT</span></div>
       <div id="other-box" class="face-box other-box" hidden><span>OTHER SEAT</span></div>
       <div id="video-placeholder" class="video-placeholder">
         <div class="video-load-panel">
-          <p id="video-placeholder-copy">${support.supported ? "Driver video has not been loaded." : "HEVC video unsupported — telemetry is still available."}</p>
+          <p id="video-placeholder-copy">${support.supported ? "Preparing driver video…" : "HEVC video unsupported — telemetry is still available."}</p>
           ${support.supported ? `<button id="load-video-button" type="button">Load driver video</button><small>Downloads the selected byte range and remuxes it in memory.</small>` : ""}
         </div>
       </div>
     </div>
     <div class="transport-row">
+      <button id="playback-toggle" class="transport-button" type="button" disabled>Play</button>
       <span id="route-clock">${formatTime(route.startSeconds)}</span>
       <input id="route-scrubber" type="range" min="${route.startSeconds}" max="${route.endSeconds}" value="${route.startSeconds}" step="0.05" aria-label="Route time" />
       <span>${formatTime(route.endSeconds)}</span>
@@ -245,10 +312,21 @@ function renderViewer(route: DriverDebugRoute): void {
       <article class="debug-card"><h3>Model</h3><dl id="model-values"></dl></article>
       <article class="debug-card"><h3>Pose</h3><dl id="pose-values"></dl></article>
     </div>
-    <article class="history-card"><h3>20 second history</h3><svg id="history-chart" viewBox="0 0 1000 190" preserveAspectRatio="none" aria-label="Awareness and distraction history"></svg></article>`;
+    <article class="history-card">
+      <div class="history-heading">
+        <h3>20 second history</h3>
+        <div class="history-legend" aria-label="Distraction history legend">
+          <span><i class="legend-eye"></i>Eye</span>
+          <span><i class="legend-phone"></i>Phone</span>
+          <span><i class="legend-pose"></i>Pose</span>
+        </div>
+      </div>
+      <svg id="history-chart" viewBox="0 0 1000 190" preserveAspectRatio="none" aria-label="Awareness and distraction history"></svg>
+    </article>`;
 
   const video = byId<HTMLVideoElement>("driver-video");
   const scrubber = byId<HTMLInputElement>("route-scrubber");
+  const playbackToggle = byId<HTMLButtonElement>("playback-toggle");
   if (support.supported) {
     byId<HTMLButtonElement>("load-video-button").addEventListener("click", () => void loadRequestedVideo(route));
   }
@@ -257,6 +335,12 @@ function renderViewer(route: DriverDebugRoute): void {
     if (videoPlayer) video.currentTime = Math.max(0, routeSeconds - videoPlayer.playbackRouteStart);
     renderTelemetry(routeSeconds);
   });
+  playbackToggle.addEventListener("click", () => {
+    if (video.paused) void video.play();
+    else video.pause();
+  });
+  video.addEventListener("play", () => { playbackToggle.textContent = "Pause"; });
+  video.addEventListener("pause", () => { playbackToggle.textContent = "Play"; });
   video.addEventListener("timeupdate", () => {
     if (!videoPlayer || !currentRoute) return;
     const routeSeconds = videoPlayer.playbackRouteStart + video.currentTime;
@@ -265,6 +349,15 @@ function renderViewer(route: DriverDebugRoute): void {
     renderTelemetry(routeSeconds);
   });
   renderTelemetry(route.startSeconds);
+}
+
+async function updateModelProvenance(route: DriverDebugRoute): Promise<void> {
+  const provenance = await resolveDmModelProvenance(route.routeInfo);
+  if (currentRoute !== route) return;
+  const element = document.querySelector<HTMLElement>("#model-provenance");
+  if (!element) return;
+  element.textContent = formatModelProvenance(provenance);
+  element.title = modelProvenanceDetails(provenance);
 }
 
 async function loadRequestedVideo(route: DriverDebugRoute): Promise<void> {
@@ -290,10 +383,15 @@ async function loadVideo(route: DriverDebugRoute): Promise<void> {
   const video = byId<HTMLVideoElement>("driver-video");
   const player = new DriverVideoPlayer(video);
   videoPlayer = player;
+  let playbackReady = false;
   await player.load(route.videoSources, route.startSeconds, route.endSeconds, (message, fraction) => {
-    if (videoPlayer !== player || currentRoute !== route) return;
+    if (playbackReady || videoPlayer !== player || currentRoute !== route) return;
     setProgress(message, 0.55 + fraction * 0.45);
+  }, (error) => {
+    if (videoPlayer !== player || currentRoute !== route) return;
+    setProgress(error instanceof Error ? error.message : String(error), 1, true);
   });
+  playbackReady = true;
   if (videoPlayer !== player || currentRoute !== route) {
     player.destroy();
     return;
@@ -301,6 +399,7 @@ async function loadVideo(route: DriverDebugRoute): Promise<void> {
   const seekToStart = () => {
     if (videoPlayer !== player || currentRoute !== route) return;
     video.currentTime = Math.max(0, route.startSeconds - player.playbackRouteStart);
+    byId<HTMLButtonElement>("playback-toggle").disabled = false;
     byId<HTMLElement>("video-placeholder").hidden = true;
     setProgress("Driver Monitoring debugger ready", 1);
   };
@@ -393,8 +492,21 @@ function renderHistory(routeSeconds: number, current: DriverMonitoringSample): v
 
 function renderAuthPanel(): void {
   if (!isSignedIn()) {
-    const warning = authCheck.status === "invalid" ? `<p class="auth-status invalid">That JWT was rejected and was not saved.</p>` : "";
-    authPanel.innerHTML = `<details ${authCheck.status === "invalid" ? "open" : ""}><summary>Private route? Use a JWT</summary>${warning}<div class="token-row"><input id="token-input" type="password" autocomplete="off" placeholder="Paste jwt.comma.ai token"/><button class="secondary" id="save-token-button" type="button">Save and verify</button></div></details>`;
+    const warning = authCheck.status === "invalid" ? `<p class="auth-status invalid">comma rejected that JWT, so it was not saved.</p>` : "";
+    authPanel.innerHTML = `<section class="auth-prompt" aria-labelledby="auth-heading">
+      <strong id="auth-heading">Private route or missing driver video?</strong>
+      <div class="auth-explanation">
+        <p>Authenticate to comma with a JWT to:</p>
+        <ul>
+          <li>open your private comma routes;</li>
+          <li>request missing driver video from a device you own; or</li>
+          <li>watch a queued device upload and open the clip when it is ready.</li>
+        </ul>
+        <p>Public routes need no authentication. Get a token from <a href="https://jwt.comma.ai" target="_blank" rel="noreferrer">jwt.comma.ai</a>; it is saved only in this browser.</p>
+      </div>
+      ${warning}
+      <div class="token-row"><input id="token-input" type="password" autocomplete="off" aria-label="comma JWT" placeholder="Paste comma JWT"/><button class="secondary" id="save-token-button" type="button">Authenticate</button></div>
+    </section>`;
     return;
   }
 
@@ -403,7 +515,7 @@ function renderAuthPanel(): void {
     : authCheck.status === "error"
       ? `<span class="auth-status warning">Saved; verification unavailable</span>`
       : `<span class="auth-status checking">Checking with comma…</span>`;
-  authPanel.innerHTML = `<p class="jwt-saved">JWT persisted in this browser. ${status} <button class="link-button" id="recheck-auth-button" type="button">Recheck</button> <button class="link-button" id="sign-out-button" type="button">Remove</button></p>`;
+  authPanel.innerHTML = `<p class="jwt-saved"><strong>Authenticated to comma with a saved JWT.</strong> Private routes are enabled; device uploads require its owner's JWT. ${status} <button class="link-button" id="recheck-auth-button" type="button">Recheck</button> <button class="link-button" id="sign-out-button" type="button">Remove</button></p>`;
 }
 
 async function verifyStoredAuth(): Promise<void> {

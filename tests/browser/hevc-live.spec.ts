@@ -15,18 +15,18 @@ test.beforeEach(async ({ page }) => {
 
 liveTest("remuxes and plays the private modern driver-camera clip", async ({ page }) => {
   await page.goto(`/?route=${encodeURIComponent(modernRoute!)}`);
-  await expect(page.locator("#status-text")).toHaveText("Telemetry ready · load driver video when needed");
   const video = page.locator("#driver-video");
-  await expect(video).toHaveJSProperty("readyState", 0);
-  await page.locator("#load-video-button").click();
   await expect(page.locator("#status-text")).toHaveText("Driver Monitoring debugger ready");
   await expect(video).toHaveJSProperty("videoWidth", 1928);
   await expect(video).toHaveJSProperty("videoHeight", 1208);
   await expect(video).toHaveJSProperty("readyState", 4);
+  await expect(video).toHaveJSProperty("controls", false);
+  await expect(page.locator("#playback-toggle")).toBeEnabled();
   await expect(page.locator("#awareness")).toContainText("%");
   await expect(page.locator("#driver-box")).toBeVisible();
 
-  await video.evaluate(async (element: HTMLVideoElement) => element.play());
+  await page.locator("#playback-toggle").click();
+  await expect(page.locator("#playback-toggle")).toHaveText("Pause");
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime)).toBeGreaterThan(1);
   await expect.poll(async () => Number(await page.locator("#route-scrubber").inputValue())).toBeGreaterThan(1);
 });
@@ -34,8 +34,6 @@ liveTest("remuxes and plays the private modern driver-camera clip", async ({ pag
 liveTest("starts an interior clip on a complete keyframe", async ({ page }) => {
   const interiorClip = `${routeBase}/90/95`;
   await page.goto(`/?route=${encodeURIComponent(interiorClip)}`);
-  await expect(page.locator("#status-text")).toHaveText("Telemetry ready · load driver video when needed");
-  await page.locator("#load-video-button").click();
   await expect(page.locator("#status-text")).toHaveText("Driver Monitoring debugger ready");
   const video = page.locator("#driver-video");
   await expect(video).toHaveJSProperty("readyState", 4);
@@ -49,10 +47,7 @@ liveTest("loads high-resolution DM telemetry from the rlog", async ({ page }) =>
   await page.locator("#high-resolution-telemetry").check();
   await page.locator("#route-input").fill(modernRoute!);
   await page.locator("#load-button").click();
-  await expect(page.locator("#status-text")).toHaveText("Telemetry ready · load driver video when needed");
   await expect(page.locator(".route-meta")).toContainText("rlogs · 20 Hz");
-  await expect(page.locator("#driver-video")).toHaveJSProperty("readyState", 0);
-  await page.locator("#load-video-button").click();
   await expect(page.locator("#status-text")).toHaveText("Driver Monitoring debugger ready");
   await expect(page.locator("#driver-video")).toHaveJSProperty("readyState", 4);
 });
@@ -61,7 +56,7 @@ liveTest("restores and verifies a persisted comma JWT", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#auth-panel")).toContainText("Verified with comma");
   await page.reload();
-  await expect(page.locator("#auth-panel")).toContainText("JWT persisted in this browser");
+  await expect(page.locator("#auth-panel")).toContainText("Authenticated to comma with a saved JWT");
   await expect(page.locator("#auth-panel")).toContainText("Verified with comma");
 });
 
@@ -74,7 +69,7 @@ test("scans Connect warning segments with the qlog worker pool", async ({ page }
   const firstOrange = page.locator(".scan-result.severity-warning").filter({ hasText: "10:44.2" });
   await expect(firstOrange).toHaveCount(1);
   await firstOrange.click();
-  await expect(page.locator("#status-text")).toHaveText("Telemetry ready · load driver video when needed");
+  await expect(page.locator("#status-text")).toHaveText("Driver Monitoring debugger ready");
   await expect(page.locator("#route-clock")).toHaveText("10:36.0");
-  await expect(page.locator("#driver-video")).toHaveJSProperty("readyState", 0);
+  await expect(page.locator("#driver-video")).toHaveJSProperty("readyState", 4);
 });

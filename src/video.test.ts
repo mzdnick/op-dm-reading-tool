@@ -17,12 +17,15 @@ describe("driver video range planning", () => {
     ]);
   });
 
-  it("coalesces contiguous frames without exceeding the memory chunk cap", () => {
-    const frames = [frame(0, 0, true, 100), frame(1, 100, false, 100), frame(2, 200, false, 100)];
+  it("uses the memory target without splitting a decodable GOP", () => {
+    const frames = [frame(0, 0, true, 100), frame(1, 100, false, 100), frame(2, 200, true, 100)];
     expect(planVideoRanges(frames, 220)).toEqual([
       { start: 0, end: 199, frames: frames.slice(0, 2) },
       { start: 200, end: 299, frames: frames.slice(2) },
     ]);
+
+    const longGop = [frame(0, 0, true, 150), frame(1, 150, false, 150), frame(2, 300, false, 150)];
+    expect(planVideoRanges(longGop, 220)).toEqual([{ start: 0, end: 449, frames: longGop }]);
   });
 });
 
