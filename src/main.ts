@@ -46,13 +46,19 @@ app.innerHTML = `
       <ul class="policy-points">
         <li><strong>Do not weaken DM if you use comma's services.</strong> comma's <a href="https://github.com/commaai/openpilot/blob/master/docs/SAFETY.md#forks-of-openpilot" target="_blank" rel="noreferrer">fork safety policy</a> says violations can get a fork and its users banned. Nerfed timings and other bypasses have historically been detected through uploaded telemetry; the complete rules are not public.</li>
         <li><strong>A ban means “Uploads ignored.”</strong> The device still runs local software, but comma stops processing its routes for <a href="https://connect.comma.ai" target="_blank" rel="noreferrer">comma Connect</a>.</li>
-        <li><strong>The effects spread.</strong> Losing routes makes fork debugging and hardware support harder, and ignored drives cannot improve comma's future driving-model datasets.</li>
+        <li><strong>The effects spread.</strong> The hardware warranty still applies, but using it may become harder: <a href="https://comma.ai/support" target="_blank" rel="noreferrer">comma support</a> requires a route from the latest stock openpilot before a hardware ticket reaches an engineer. If that device's uploads are ignored, it cannot provide a processed Connect route from the reproduction, complicating the support process. Losing routes also makes fork debugging harder, and ignored drives cannot improve comma's future driving-model datasets.</li>
       </ul>
       <p class="policy-caveat">Users have historically reported one courtesy ban reversal per device. This is not a published right or a current guarantee.</p>
       <div class="feedback-path">
-        <h3>DM false positive? Send evidence.</h3>
+        <h3>Driver monitoring false positive? Send evidence.</h3>
+        <p class="feedback-lead"><strong>Getting flagged while attentive?</strong> Capture one clean reproduction before changing driver monitoring:</p>
+        <figure class="bookmark-guide">
+          <img src="/bookmark-route-time.gif" width="540" height="540" loading="lazy" alt="The on-device bookmark button marking the exact time of a drive" />
+          <figcaption><strong>Bookmark it when it happens.</strong> Tap the on-device bookmark button during the false positive so the exact route time is easy to find later.</figcaption>
+        </figure>
         <ol>
-          <li>Enable driver-camera recording, reproduce the problem, and note the exact time.</li>
+          <li>Enable driver-camera recording before the drive.</li>
+          <li>When the false positive happens, tap the bookmark button shown above.</li>
           <li>Upload that log and driver-camera segment in <a href="https://connect.comma.ai" target="_blank" rel="noreferrer">comma Connect</a>.</li>
           <li>For a public route, use <a href="https://discord.com/channels/469524606043160576/1254834193066623017" target="_blank" rel="noreferrer">#driving-feedback</a>. To keep sensitive driver video private, post the private link and timestamps in <a href="https://discord.com/channels/469524606043160576/616456819027607567" target="_blank" rel="noreferrer">#openpilot-experience</a>; comma staff can access it, other Discord users cannot.</li>
         </ol>
