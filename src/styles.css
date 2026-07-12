@@ -123,6 +123,11 @@ dd { margin: 0; text-align: right; font-family: "SFMono-Regular", Consolas, mono
 .lane-eye { fill: #ffb65b; } .lane-phone { fill: #ff5f68; } .lane-pose { fill: #58b7ff; }
 .info-notes { display: grid; grid-template-columns: 1fr 1fr; gap: 36px; margin-top: 24px; padding: 22px 2px 0; border-top: 1px solid #27323a; }
 .info-notes p { max-width: 62ch; margin: 8px 0 0; color: #a1afb8; }
+.policy-note { margin-top: 24px; padding: 22px 2px 0; border-top: 1px solid #27323a; }
+.policy-note h2 { margin-bottom: 10px; }
+.policy-note h3 { margin: 22px 0 8px; }
+.policy-note p { max-width: 92ch; margin: 9px 0 0; color: #a1afb8; }
+.policy-note .policy-sources { color: #71838f; font-size: .78rem; }
 
 @media (max-width: 900px) {
   .debug-grid, .info-notes { grid-template-columns: 1fr; }
