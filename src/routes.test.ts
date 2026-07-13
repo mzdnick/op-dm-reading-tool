@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { logSourceLabel, orderedLogUrls, parseRouteInput, segmentFromUrl } from "./routes";
-import { buildAuthCallbackCleanUrl, buildRouteShareUrl, routeInputFromUrl } from "./routeInput";
+import { buildAuthCallbackCleanUrl, buildRouteShareUrl, buildRouteTimeUrl, routeInputFromUrl, routeTimeFromUrl } from "./routeInput";
 
 describe("route parsing", () => {
   it("accepts route names", () => {
@@ -78,12 +78,26 @@ describe("route parsing", () => {
     expect(routeInputFromUrl("https://example.test/?route=not-a-route")).toBeNull();
   });
 
+  it("parses non-negative deep-link route times", () => {
+    expect(routeTimeFromUrl("https://example.test/?t=270")).toBe(270);
+    expect(routeTimeFromUrl("https://example.test/?t=270.5")).toBe(270.5);
+    expect(routeTimeFromUrl("https://example.test/?t=-1")).toBeNull();
+    expect(routeTimeFromUrl("https://example.test/?t=nope")).toBeNull();
+    expect(routeTimeFromUrl("https://example.test/")).toBeNull();
+  });
+
+  it("updates route time without losing the route or hash", () => {
+    expect(buildRouteTimeUrl("https://example.test/?route=demo#how-to-use", 270.8)).toBe(
+      "https://example.test/?route=demo&t=270#how-to-use",
+    );
+  });
+
   it("preserves route params when cleaning OAuth callback URLs", () => {
     expect(
       buildAuthCallbackCleanUrl(
-        "https://example.test/op-dm-reading-tool/?code=abc&provider=g&route=5beb9b58bd12b691%7C0000010a--a51155e496",
+        "https://example.test/op-dm-reading-tool/?code=abc&provider=g&route=5beb9b58bd12b691%7C0000010a--a51155e496&t=270.9",
         "/op-dm-reading-tool/",
       ),
-    ).toBe("https://example.test/op-dm-reading-tool/?route=5beb9b58bd12b691%7C0000010a--a51155e496");
+    ).toBe("https://example.test/op-dm-reading-tool/?route=5beb9b58bd12b691%7C0000010a--a51155e496&t=270");
   });
 });

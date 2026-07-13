@@ -101,3 +101,15 @@ test("seeks and plays across public Mici clips without poisoning SourceBuffer", 
     await page.locator("#playback-toggle").click();
   }
 });
+
+test("opens and advances a route-time deep link", async ({ page }) => {
+  const clip = `${PUBLIC_MICI_ROUTE}/247/276`;
+  await page.goto(`/?route=${encodeURIComponent(clip)}&t=270`);
+  await expect(page.locator("#status-text")).toHaveText("Driver Monitoring debugger ready");
+  await expect(page.locator("#route-clock")).toHaveText("4:30.0");
+  await expect(page.locator("#route-scrubber")).toHaveValue("270");
+  await expect(page).toHaveURL(/[?&]t=270(?:&|$)/);
+
+  await page.locator("#playback-toggle").click();
+  await expect.poll(() => Number(new URL(page.url()).searchParams.get("t"))).toBeGreaterThan(270);
+});

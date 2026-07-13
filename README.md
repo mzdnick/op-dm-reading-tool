@@ -69,6 +69,11 @@ Offline requests wait for the device to reconnect; uploads are Wi-Fi-only.
    bare route scans its Connect warning timeline and qlogs, prioritizing orange
    and red intervals before the rest of the drive.
 
+Playback and scrubbing update a `t=<route-second>` query parameter at most once
+per second. The **Share** button copies that timestamped URL, and opening it
+restores the same point in the route. For example, a shared URL for the 247–276
+second clip with `t=270` opens at route second 270.
+
 Accepted inputs include:
 
 ```text

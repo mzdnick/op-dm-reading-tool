@@ -3,7 +3,7 @@ import { checkAccessToken, completeAuthCallback, isSignedIn, setAccessToken, sig
 import { loadDriverDebugRoute, MissingDriverVideoError, type DriverDebugRoute } from "./debugger";
 import { sampleAt, selectDriver, type DriverModelData, type DriverMonitoringSample } from "./dm";
 import { formatModelProvenance, modelProvenanceDetails, resolveDmModelProvenance, routeModelProvenance } from "./modelProvenance";
-import { buildAuthCallbackCleanUrl, buildRouteShareUrl, parseRouteInput, routeInputFromUrl } from "./routeInput";
+import { buildAuthCallbackCleanUrl, buildRouteShareUrl, buildRouteTimeUrl, parseRouteInput, routeInputFromUrl, routeTimeFromUrl } from "./routeInput";
 import { scanDriverMonitoringRoute, type RouteScanUpdate } from "./scan";
 import type { ScanFinding } from "./scanLogic";
 import { buildDriverVideoUploadRequest, queueDriverVideoUpload, watchDriverVideoUpload } from "./uploads";
@@ -128,6 +128,9 @@ let videoPlayer: DriverVideoPlayer | null = null;
 let currentScanController: AbortController | null = null;
 let currentUploadController: AbortController | null = null;
 let authCheck: AuthCheckResult = isSignedIn() ? { status: "checking" } : { status: "missing" };
+let routeTimeUpdateTimer: number | null = null;
+let pendingRouteTimeSeconds: number | null = null;
+let lastRouteTimeUpdate = Number.NEGATIVE_INFINITY;
 
 renderAuthPanel();
 void initialize();
@@ -190,6 +193,7 @@ async function handleRouteInput(routeInput: string, updateHistory: boolean): Pro
 }
 
 async function scanRoute(routeInput: string, updateHistory: boolean): Promise<void> {
+  resetRouteTimeUrlUpdates();
   cancelCurrentScan();
   cancelCurrentUploadWatch();
   videoPlayer?.destroy();
@@ -220,6 +224,7 @@ async function scanRoute(routeInput: string, updateHistory: boolean): Promise<vo
 }
 
 async function loadRoute(routeInput: string, updateHistory: boolean): Promise<void> {
+  resetRouteTimeUrlUpdates();
   cancelCurrentScan();
   cancelCurrentUploadWatch();
   setBusy(true);
@@ -352,6 +357,7 @@ function cancelCurrentUploadWatch(): void {
 
 function renderViewer(route: DriverDebugRoute): void {
   const duration = route.endSeconds - route.startSeconds;
+  const initialRouteSeconds = deepLinkedRouteTime(route);
   const initialProvenance = routeModelProvenance(route.routeInfo);
   viewer.hidden = false;
   viewer.innerHTML = `
@@ -375,7 +381,7 @@ function renderViewer(route: DriverDebugRoute): void {
     <div class="transport-row">
       <button id="playback-toggle" class="transport-button" type="button" disabled>Play</button>
       <span id="route-clock">${formatTime(route.startSeconds)}</span>
-      <input id="route-scrubber" type="range" min="${route.startSeconds}" max="${route.endSeconds}" value="${route.startSeconds}" step="0.05" aria-label="Route time" />
+      <input id="route-scrubber" type="range" min="${route.startSeconds}" max="${route.endSeconds}" value="${initialRouteSeconds}" step="0.05" aria-label="Route time" />
       <span>${formatTime(route.endSeconds)}</span>
       <span>${duration.toFixed(1)}s clip</span>
     </div>
@@ -407,6 +413,7 @@ function renderViewer(route: DriverDebugRoute): void {
     const routeSeconds = Number(scrubber.value);
     videoPlayer?.seek(routeSeconds);
     renderTelemetry(routeSeconds);
+    queueRouteTimeUrlUpdate(routeSeconds);
   });
   playbackToggle.addEventListener("click", () => {
     if (video.paused) void video.play();
@@ -420,8 +427,9 @@ function renderViewer(route: DriverDebugRoute): void {
     if (routeSeconds >= currentRoute.endSeconds) video.pause();
     scrubber.value = String(Math.min(currentRoute.endSeconds, Math.max(currentRoute.startSeconds, routeSeconds)));
     renderTelemetry(routeSeconds);
+    queueRouteTimeUrlUpdate(routeSeconds);
   });
-  renderTelemetry(route.startSeconds);
+  renderTelemetry(initialRouteSeconds);
 }
 
 async function updateModelProvenance(route: DriverDebugRoute): Promise<void> {
@@ -464,6 +472,7 @@ async function loadVideo(route: DriverDebugRoute): Promise<void> {
     if (videoPlayer !== player || currentRoute !== route) return;
     setProgress(error instanceof Error ? error.message : String(error), 1, true);
   });
+  player.seek(deepLinkedRouteTime(route));
   playbackReady = true;
   if (videoPlayer !== player || currentRoute !== route) {
     player.destroy();
@@ -477,6 +486,42 @@ async function loadVideo(route: DriverDebugRoute): Promise<void> {
   };
   if (video.readyState >= 1) seekToStart();
   else video.addEventListener("loadedmetadata", seekToStart, { once: true });
+}
+
+function deepLinkedRouteTime(route: DriverDebugRoute): number {
+  const requested = routeTimeFromUrl(window.location.href);
+  if (requested === null) return route.startSeconds;
+  return Math.min(route.endSeconds, Math.max(route.startSeconds, requested));
+}
+
+function queueRouteTimeUrlUpdate(routeSeconds: number): void {
+  const route = currentRoute;
+  if (!route || !Number.isFinite(routeSeconds)) return;
+  pendingRouteTimeSeconds = Math.floor(Math.min(route.endSeconds, Math.max(route.startSeconds, routeSeconds)));
+  const elapsed = performance.now() - lastRouteTimeUpdate;
+  if (elapsed >= 1_000) {
+    flushRouteTimeUrlUpdate();
+    return;
+  }
+  if (routeTimeUpdateTimer !== null) return;
+  routeTimeUpdateTimer = window.setTimeout(flushRouteTimeUrlUpdate, 1_000 - elapsed);
+}
+
+function flushRouteTimeUrlUpdate(): void {
+  routeTimeUpdateTimer = null;
+  const routeSeconds = pendingRouteTimeSeconds;
+  pendingRouteTimeSeconds = null;
+  if (routeSeconds === null) return;
+  const nextUrl = buildRouteTimeUrl(window.location.href, routeSeconds);
+  if (nextUrl !== window.location.href) window.history.replaceState({}, "", nextUrl);
+  lastRouteTimeUpdate = performance.now();
+}
+
+function resetRouteTimeUrlUpdates(): void {
+  if (routeTimeUpdateTimer !== null) window.clearTimeout(routeTimeUpdateTimer);
+  routeTimeUpdateTimer = null;
+  pendingRouteTimeSeconds = null;
+  lastRouteTimeUpdate = Number.NEGATIVE_INFINITY;
 }
 
 function renderTelemetry(routeSeconds: number): void {

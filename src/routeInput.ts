@@ -1,4 +1,5 @@
 export const ROUTE_QUERY_PARAM = "route";
+export const ROUTE_TIME_QUERY_PARAM = "t";
 
 export interface ParsedRouteInput {
   routeName: string;
@@ -75,10 +76,25 @@ export function routeInputFromUrl(urlLike: string | URL): string | null {
   }
 }
 
+export function routeTimeFromUrl(urlLike: string | URL): number | null {
+  const url = typeof urlLike === "string" ? new URL(urlLike, "https://example.test") : urlLike;
+  const rawTime = url.searchParams.get(ROUTE_TIME_QUERY_PARAM);
+  if (rawTime === null || rawTime.trim() === "") return null;
+  const routeSeconds = Number(rawTime);
+  return Number.isFinite(routeSeconds) && routeSeconds >= 0 ? routeSeconds : null;
+}
+
 export function buildRouteShareUrl(origin: string, basePath: string, routeInput: string): string {
   parseRouteInput(routeInput);
   const url = new URL(basePath || "/", origin);
   url.searchParams.set(ROUTE_QUERY_PARAM, routeInput.trim());
+  return url.toString();
+}
+
+export function buildRouteTimeUrl(currentHref: string, routeSeconds: number): string {
+  if (!Number.isFinite(routeSeconds) || routeSeconds < 0) throw new Error("Route time must be a non-negative number.");
+  const url = new URL(currentHref);
+  url.searchParams.set(ROUTE_TIME_QUERY_PARAM, String(Math.floor(routeSeconds)));
   return url.toString();
 }
 
@@ -87,5 +103,7 @@ export function buildAuthCallbackCleanUrl(currentHref: string, basePath: string)
   const cleanedUrl = new URL(basePath || "/", currentUrl.origin);
   const routeName = routeInputFromUrl(currentUrl);
   if (routeName) cleanedUrl.searchParams.set(ROUTE_QUERY_PARAM, routeName);
+  const routeSeconds = routeTimeFromUrl(currentUrl);
+  if (routeSeconds !== null) cleanedUrl.searchParams.set(ROUTE_TIME_QUERY_PARAM, String(Math.floor(routeSeconds)));
   return cleanedUrl.toString();
 }
