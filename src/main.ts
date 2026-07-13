@@ -71,14 +71,14 @@ app.innerHTML = `
       <h2>Open code. Conditional services.</h2>
       <p><a href="https://github.com/commaai/openpilot" target="_blank" rel="noreferrer">openpilot's MIT license</a> lets you inspect, change, and run the software. Access to comma's servers is separate.</p>
       <ul class="policy-points">
-        <li><strong>Do not weaken DM if you use comma's services.</strong> comma's <a href="https://github.com/commaai/openpilot/blob/master/docs/SAFETY.md#forks-of-openpilot" target="_blank" rel="noreferrer">fork safety policy</a> says violations can get a fork and its users banned. Nerfed timings and other bypasses have historically been detected through uploaded telemetry; the complete rules are not public.</li>
+        <li><strong>Do not weaken driver monitoring if you use comma's services.</strong> comma's <a href="https://github.com/commaai/openpilot/blob/master/docs/SAFETY.md#forks-of-openpilot" target="_blank" rel="noreferrer">fork safety policy</a> says violations can get a fork and its users banned. Nerfed timings and other bypasses have historically been detected through uploaded telemetry; the complete rules are not public.</li>
         <li><strong>A ban means “Uploads ignored.”</strong> The device still runs local software, but comma stops processing its routes for <a href="https://connect.comma.ai" target="_blank" rel="noreferrer">comma Connect</a>.</li>
         <li><strong>The effects spread.</strong> The hardware warranty still applies, but using it may become harder: <a href="https://comma.ai/support" target="_blank" rel="noreferrer">comma support</a> requires a route from the latest stock openpilot before a hardware ticket reaches an engineer. If that device's uploads are ignored, it cannot provide a processed Connect route from the reproduction, complicating the support process. Losing routes also makes fork debugging harder, and ignored drives cannot improve comma's future driving-model datasets.</li>
       </ul>
       <p class="policy-caveat">Users have historically reported one courtesy ban reversal per device. This is not a published right or a current guarantee.</p>
       <div class="feedback-path">
         <h3>Driver monitoring false positive? Send evidence.</h3>
-        <p class="feedback-lead"><strong>Getting flagged while attentive?</strong> Capture one clean reproduction before changing driver monitoring:</p>
+        <p class="feedback-lead"><strong>Getting flagged while attentive?</strong> Do not weaken or bypass driver monitoring. Capture one clean reproduction and report the false positive to comma instead:</p>
         <ol>
           <li>Enable driver-camera recording before the drive.</li>
           <li>
