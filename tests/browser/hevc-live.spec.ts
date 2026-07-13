@@ -126,6 +126,9 @@ test("loads the public Mici demo from the route form", async ({ page }) => {
   await expect(page.locator("#route-scrubber")).toHaveAttribute("style", /#e08546/);
   await expect(page.locator(".transport-legend")).toContainText("Distraction signal / warning");
   await expect(page.locator(".transport-note")).toContainText("did not escalate them to an on-device warning or failure");
+  await expect(page.locator(".timeline-alert-marker")).toHaveCount(0);
   await expect(page).toHaveURL(/[?&]t=446(?:&|$)/);
   await expect(page).toHaveURL(new RegExp(`route=${encodeURIComponent(demo)}`));
+  await page.locator("#route-scrubber").fill("447");
+  await expect(page.locator("#route-clock")).toHaveText("7:27.0");
 });

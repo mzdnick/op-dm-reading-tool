@@ -6,7 +6,7 @@ import { formatModelProvenance, modelProvenanceDetails, resolveDmModelProvenance
 import { buildAuthCallbackCleanUrl, buildRouteShareUrl, buildRouteTimeUrl, parseRouteInput, routeInputFromUrl, routeTimeFromUrl } from "./routeInput";
 import { scanDriverMonitoringRoute, type RouteScanUpdate } from "./scan";
 import type { ScanFinding } from "./scanLogic";
-import { buildMonitoringTimelineGradient, monitoringTimelineNote } from "./timeline";
+import { buildMonitoringTimelineGradient, buildOnDeviceAlertMarkers, monitoringTimelineNote } from "./timeline";
 import { buildDriverVideoUploadRequest, queueDriverVideoUpload, watchDriverVideoUpload } from "./uploads";
 import { DriverVideoPlayer, detectHevcSupport } from "./video";
 
@@ -377,6 +377,7 @@ function renderViewer(route: DriverDebugRoute): void {
   const duration = route.endSeconds - route.startSeconds;
   const initialRouteSeconds = deepLinkedRouteTime(route);
   const timelineNote = monitoringTimelineNote(route.monitoring);
+  const alertMarkers = buildOnDeviceAlertMarkers(route.monitoring, route.startSeconds, route.endSeconds);
   const initialProvenance = routeModelProvenance(route.routeInfo);
   viewer.hidden = false;
   viewer.innerHTML = `
@@ -400,7 +401,13 @@ function renderViewer(route: DriverDebugRoute): void {
     <div class="transport-row">
       <button id="playback-toggle" class="transport-button" type="button" disabled>Play</button>
       <span id="route-clock">${formatTime(route.startSeconds)}</span>
-      <input id="route-scrubber" type="range" min="${route.startSeconds}" max="${route.endSeconds}" value="${initialRouteSeconds}" step="0.05" aria-label="Route time" />
+      <div class="timeline-control">
+        <input id="route-scrubber" type="range" min="${route.startSeconds}" max="${route.endSeconds}" value="${initialRouteSeconds}" step="0.05" aria-label="Route time" />
+        <div class="timeline-alert-markers" aria-label="On-device driver monitoring alerts">${alertMarkers.map((marker) => {
+          const width = Math.max(0.35, marker.endPercent - marker.startPercent);
+          return `<i class="timeline-alert-marker ${marker.severity}" style="left:${marker.startPercent.toFixed(2)}%;width:${width.toFixed(2)}%" title="${marker.severity === "early" ? "Early on-device alert" : marker.severity === "warning" ? "On-device warning" : "Critical alert or lockout"}"></i>`;
+        }).join("")}</div>
+      </div>
       <span>${formatTime(route.endSeconds)}</span>
       <span>${duration.toFixed(1)}s clip</span>
     </div>
@@ -411,6 +418,7 @@ function renderViewer(route: DriverDebugRoute): void {
       <span><i class="timeline-degraded"></i>Low awareness / early alert</span>
       <span><i class="timeline-warning"></i>Distraction signal / warning</span>
       <span><i class="timeline-critical"></i>Critical / lockout</span>
+      <span><i class="timeline-on-device-alert"></i>On-device alert glow</span>
     </div>
     <p class="transport-note">${escapeHtml(timelineNote)}</p>
     <div class="state-badges" id="state-badges"></div>
