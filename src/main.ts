@@ -103,6 +103,10 @@ app.innerHTML = `
       </div>
       <p class="policy-sources">Sources: <a href="https://docs.comma.ai/contributing/feedback/" target="_blank" rel="noreferrer">comma's feedback guide</a> · <a href="https://comma.ai/support" target="_blank" rel="noreferrer">comma support policy</a></p>
     </section>
+    <footer class="site-footer">
+      <span>Open-source under the MIT License.</span>
+      <a href="https://github.com/nelsonjchen/op-dm-reading-tool" target="_blank" rel="noreferrer">View this tool on GitHub ↗</a>
+    </footer>
   </section>`;
 
 const form = byId<HTMLFormElement>("reader-form");

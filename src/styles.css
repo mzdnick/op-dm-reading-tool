@@ -181,6 +181,8 @@ dd { margin: 0; text-align: right; font-family: "SFMono-Regular", Consolas, mono
 .policy-note .feedback-destination { margin-top: 16px; color: #c3ced4; }
 .feedback-destination strong { color: #edf4f7; }
 .policy-note .policy-sources { color: #71838f; font-size: .78rem; }
+.site-footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 32px; padding: 20px 2px 0; border-top: 1px solid #27323a; color: #71838f; font-size: .82rem; }
+.site-footer a { font-weight: 800; }
 
 @media (max-width: 900px) {
   .debug-grid, .info-notes, .usage-steps { grid-template-columns: 1fr 1fr; }
@@ -205,4 +207,5 @@ dd { margin: 0; text-align: right; font-family: "SFMono-Regular", Consolas, mono
   .timeline-guide-label { flex-direction: column; gap: 3px; }
   .timeline-guide-actions { grid-template-columns: 1fr; gap: 4px; }
   .drag-action { text-align: left; }
+  .site-footer { align-items: flex-start; flex-direction: column; gap: 7px; }
 }
