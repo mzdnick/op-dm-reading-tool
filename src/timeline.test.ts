@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DriverModelSample, DriverMonitoringSample } from "./dm";
-import { buildMonitoringTimelineGradient, monitoringTimelineState } from "./timeline";
+import { buildMonitoringTimelineGradient, monitoringTimelineNote, monitoringTimelineState } from "./timeline";
 
 const sample = (routeSeconds: number, overrides: Partial<DriverMonitoringSample> = {}): DriverMonitoringSample => ({
   logMonoTime: BigInt(routeSeconds * 1e9),
@@ -62,5 +62,10 @@ describe("driver monitoring timeline", () => {
     expect(gradient).toContain("#e08546 50.00%");
     expect(gradient).toContain("#ff5f68 80.00%");
     expect(gradient).toContain("#ff5f68 100.00%");
+  });
+
+  it("distinguishes raw distraction from an escalated warning", () => {
+    expect(monitoringTimelineNote([sample(0, { isDistracted: true })])).toContain("did not escalate");
+    expect(monitoringTimelineNote([sample(0, { isDistracted: true, alertLevel: "two" })])).toContain("warning-level alert");
   });
 });

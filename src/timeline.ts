@@ -18,6 +18,15 @@ export function monitoringTimelineState(sample: DriverMonitoringSample, model: D
   return "normal";
 }
 
+export function monitoringTimelineNote(samples: DriverMonitoringSample[]): string {
+  const hasRawDistraction = samples.some((sample) => sample.isDistracted);
+  const hasWarningOrFailure = samples.some((sample) => sample.lockout || sample.alertLevel === "two" || sample.alertLevel === "three");
+  if (hasRawDistraction && !hasWarningOrFailure) {
+    return "Orange in this clip marks brief raw distraction signals. openpilot did not escalate them to an on-device warning or failure.";
+  }
+  return "Orange can mean a raw distraction signal or a warning-level alert. Check the current alert state before treating it as an on-device warning.";
+}
+
 export function buildMonitoringTimelineGradient(
   samples: DriverMonitoringSample[],
   startSeconds: number,

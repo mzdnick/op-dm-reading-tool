@@ -6,7 +6,7 @@ import { formatModelProvenance, modelProvenanceDetails, resolveDmModelProvenance
 import { buildAuthCallbackCleanUrl, buildRouteShareUrl, buildRouteTimeUrl, parseRouteInput, routeInputFromUrl, routeTimeFromUrl } from "./routeInput";
 import { scanDriverMonitoringRoute, type RouteScanUpdate } from "./scan";
 import type { ScanFinding } from "./scanLogic";
-import { buildMonitoringTimelineGradient } from "./timeline";
+import { buildMonitoringTimelineGradient, monitoringTimelineNote } from "./timeline";
 import { buildDriverVideoUploadRequest, queueDriverVideoUpload, watchDriverVideoUpload } from "./uploads";
 import { DriverVideoPlayer, detectHevcSupport } from "./video";
 
@@ -376,6 +376,7 @@ function cancelCurrentUploadWatch(): void {
 function renderViewer(route: DriverDebugRoute): void {
   const duration = route.endSeconds - route.startSeconds;
   const initialRouteSeconds = deepLinkedRouteTime(route);
+  const timelineNote = monitoringTimelineNote(route.monitoring);
   const initialProvenance = routeModelProvenance(route.routeInfo);
   viewer.hidden = false;
   viewer.innerHTML = `
@@ -408,9 +409,10 @@ function renderViewer(route: DriverDebugRoute): void {
       <span><i class="timeline-normal"></i>Normal</span>
       <span><i class="timeline-suggestion"></i>Model concern</span>
       <span><i class="timeline-degraded"></i>Low awareness / early alert</span>
-      <span><i class="timeline-warning"></i>Distracted / warning</span>
+      <span><i class="timeline-warning"></i>Distraction signal / warning</span>
       <span><i class="timeline-critical"></i>Critical / lockout</span>
     </div>
+    <p class="transport-note">${escapeHtml(timelineNote)}</p>
     <div class="state-badges" id="state-badges"></div>
     <div class="debug-grid">
       <article class="debug-card"><h3>DM state</h3><strong class="hero-value" id="awareness">--</strong><p id="awareness-detail">--</p><dl id="dm-values"></dl></article>
