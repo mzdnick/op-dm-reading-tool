@@ -13,6 +13,21 @@ boxes over the synchronized camera feed.
 Everything runs in the browser. Route logs, video, and JWTs are not uploaded to
 this project or a project-owned backend.
 
+## Try the public Mici demo
+
+[![The public Mici demo loaded in the openpilot driver monitoring debugger, with the driver's face highlighted](https://opdm.mindflakes.com/og-preview.png?v=demo-route)](https://opdm.mindflakes.com/?route=https%3A%2F%2Fconnect.comma.ai%2F5beb9b58bd12b691%2F0000010a--a51155e496%2F247%2F276)
+
+Open the clip directly in the
+[driver monitoring debugger](https://opdm.mindflakes.com/?route=https%3A%2F%2Fconnect.comma.ai%2F5beb9b58bd12b691%2F0000010a--a51155e496%2F247%2F276),
+or inspect the original public route in
+[comma Connect](https://connect.comma.ai/5beb9b58bd12b691/0000010a--a51155e496/247/276).
+
+This is a stable public Mici fixture with uploaded driver-camera video, so it is
+useful for trying playback, face highlighting, telemetry, and seeking without a
+JWT. It records the older flat Driver Monitoring state. Modern openpilot routes
+use policy-based Driver Monitoring fields and can show additional state; the
+debugger supports both formats.
+
 The **Authenticate to comma with a JWT** panel explains that JWT authentication
 opens private routes and, for device owners, permits missing-file upload
 requests. JWTs are persisted in that browser's local storage and verified
