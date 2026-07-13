@@ -24,6 +24,7 @@ app.innerHTML = `
         <button id="load-button" type="submit">Scan or load</button>
         <button id="share-button" class="secondary" type="button" disabled>Share</button>
       </div>
+      <p class="form-help"><strong>New here?</strong> <a href="#how-to-use">See the basic instructions ↓</a></p>
       <p class="form-hint">Bare routes scan for warnings and unusual DM signals. Clip URLs load their exact start/end range. Driver video never leaves your browser.</p>
       <label class="quality-option" for="high-resolution-telemetry">
         <input id="high-resolution-telemetry" type="checkbox" />
@@ -39,6 +40,32 @@ app.innerHTML = `
     <section class="info-notes">
       <div><h2>What this shows</h2><p>Awareness, active policy, distraction reasons, alerts, face/eye/blink/phone model values, pose calibration, vehicle interaction, and coarse model-derived seat boxes.</p></div>
       <div><h2>HEVC requirement</h2><p id="codec-summary">Checking native HEVC playback…</p><p class="muted">Telemetry remains useful even when this browser cannot decode the uploaded driver video.</p></div>
+    </section>
+    <section class="usage-guide" id="how-to-use">
+      <div class="usage-heading">
+        <div>
+          <p class="eyebrow">Basic instructions</p>
+          <h2>From comma Connect to a useful driver-monitoring replay</h2>
+        </div>
+        <a href="#reader-form">Back to the route field ↑</a>
+      </div>
+      <figure class="timeline-selection-guide">
+        <div class="timeline-guide-label"><strong>comma Connect timeline</strong><span>It is draggable—even though it does not look like a range control.</span></div>
+        <div class="timeline-guide-track" role="img" aria-label="Drag from before an event to after it on the comma Connect timeline">
+          <span class="timeline-event event-one"></span>
+          <span class="timeline-event event-two"></span>
+          <span class="timeline-bookmark" title="Bookmark"></span>
+          <span class="timeline-selection"><i class="selection-start"></i><i class="selection-end"></i></span>
+        </div>
+        <div class="timeline-guide-actions"><span><strong>1. Press</strong> just before the event</span><span class="drag-action"><strong>2. Drag →</strong> across a short window</span><span><strong>3. Release</strong> to zoom and update the URL</span></div>
+        <figcaption>Then copy the address-bar URL. If the selection worked, the link ends in two numbers such as <code>/247/276</code>. Drag across the zoomed timeline again to make the clip tighter.</figcaption>
+      </figure>
+      <ol class="usage-steps">
+        <li><strong>Select a clip in <a href="https://connect.comma.ai" target="_blank" rel="noreferrer">comma Connect</a>.</strong><span>Open the drive, click near the event, then click and drag across a short part of the timeline. Release to zoom in; drag again if you need a tighter clip. Copy the URL only after selecting—the end should now look like <code>/start/end</code>.</span></li>
+        <li><strong>Paste it above and choose Scan or load.</strong><span>The tool downloads telemetry first, prioritizes warning sections, and only fetches driver video when a clip is opened.</span></li>
+        <li><strong>Inspect the synchronized replay.</strong><span>Scrub with the app timeline and compare the face box, awareness, policy, distraction state, pose, and model values at the same moment.</span></li>
+        <li><strong>Authenticate only when needed.</strong><span>A <a href="https://jwt.comma.ai" target="_blank" rel="noreferrer">comma JWT</a> unlocks private routes and lets the device owner request missing driver-camera uploads.</span></li>
+      </ol>
     </section>
     <section class="policy-note">
       <h2>Open code. Conditional services.</h2>
@@ -226,7 +253,13 @@ async function loadRoute(routeInput: string, updateHistory: boolean): Promise<vo
     }
   } finally {
     setBusy(false);
+    restoreInstructionAnchor();
   }
+}
+
+function restoreInstructionAnchor(): void {
+  if (window.location.hash !== "#how-to-use") return;
+  window.requestAnimationFrame(() => byId<HTMLElement>("how-to-use").scrollIntoView({ block: "start" }));
 }
 
 function renderMissingDriverVideo(error: MissingDriverVideoError, routeInput: string): void {
