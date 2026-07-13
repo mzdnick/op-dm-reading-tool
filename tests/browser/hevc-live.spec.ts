@@ -123,6 +123,8 @@ test("loads the public Mici demo from the route form", async ({ page }) => {
   await expect(page.locator("#driver-box")).toBeVisible();
   await expect(page.locator("#route-clock")).toHaveText("7:26.0");
   await expect(page.locator("#model-values")).toContainText("87%");
+  await expect(page.locator("#route-scrubber")).toHaveAttribute("style", /#e08546/);
+  await expect(page.locator(".transport-legend")).toContainText("Distracted / warning");
   await expect(page).toHaveURL(/[?&]t=446(?:&|$)/);
   await expect(page).toHaveURL(new RegExp(`route=${encodeURIComponent(demo)}`));
 });

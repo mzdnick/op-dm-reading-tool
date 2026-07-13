@@ -6,6 +6,7 @@ import { formatModelProvenance, modelProvenanceDetails, resolveDmModelProvenance
 import { buildAuthCallbackCleanUrl, buildRouteShareUrl, buildRouteTimeUrl, parseRouteInput, routeInputFromUrl, routeTimeFromUrl } from "./routeInput";
 import { scanDriverMonitoringRoute, type RouteScanUpdate } from "./scan";
 import type { ScanFinding } from "./scanLogic";
+import { buildMonitoringTimelineGradient } from "./timeline";
 import { buildDriverVideoUploadRequest, queueDriverVideoUpload, watchDriverVideoUpload } from "./uploads";
 import { DriverVideoPlayer, detectHevcSupport } from "./video";
 
@@ -402,6 +403,14 @@ function renderViewer(route: DriverDebugRoute): void {
       <span>${formatTime(route.endSeconds)}</span>
       <span>${duration.toFixed(1)}s clip</span>
     </div>
+    <div class="transport-legend" aria-label="Driver monitoring timeline legend">
+      <strong>Driver monitoring timeline</strong>
+      <span><i class="timeline-normal"></i>Normal</span>
+      <span><i class="timeline-suggestion"></i>Model concern</span>
+      <span><i class="timeline-degraded"></i>Low awareness / early alert</span>
+      <span><i class="timeline-warning"></i>Distracted / warning</span>
+      <span><i class="timeline-critical"></i>Critical / lockout</span>
+    </div>
     <div class="state-badges" id="state-badges"></div>
     <div class="debug-grid">
       <article class="debug-card"><h3>DM state</h3><strong class="hero-value" id="awareness">--</strong><p id="awareness-detail">--</p><dl id="dm-values"></dl></article>
@@ -422,6 +431,7 @@ function renderViewer(route: DriverDebugRoute): void {
 
   const video = byId<HTMLVideoElement>("driver-video");
   const scrubber = byId<HTMLInputElement>("route-scrubber");
+  scrubber.style.setProperty("--dm-timeline", buildMonitoringTimelineGradient(route.monitoring, route.startSeconds, route.endSeconds, route.models));
   const playbackToggle = byId<HTMLButtonElement>("playback-toggle");
   if (support.supported) {
     byId<HTMLButtonElement>("load-video-button").addEventListener("click", () => void loadRequestedVideo(route));
