@@ -203,6 +203,9 @@ dd { margin: 0; text-align: right; font-family: "SFMono-Regular", Consolas, mono
 .feedback-lead strong { color: #57b8f8; }
 .policy-note .phone-in-hand-note { max-width: 84ch; margin: 0 0 18px; padding: 9px 0 9px 13px; border-left: 3px solid #e3d756; color: #b8c4cb; }
 .phone-in-hand-note strong { color: #f0e77a; }
+.policy-note .feedback-priority-note { max-width: 84ch; margin: 0 0 20px; padding: 9px 0 9px 13px; border-left: 3px solid #57b8f8; color: #b8c4cb; }
+.feedback-priority-note strong { color: #8fd0fb; }
+.feedback-path .evidence-steps-heading { margin: 0 0 10px; color: #edf4f7; font-size: .96rem; }
 .bookmark-guide { display: flex; align-items: center; gap: 18px; margin: 14px 0 16px; }
 .bookmark-guide img { width: 240px; max-width: 42vw; height: auto; flex: 0 0 auto; }
 .policy-note .bookmark-guide figcaption { max-width: 38ch; color: #c3ced4; line-height: 1.5; }
