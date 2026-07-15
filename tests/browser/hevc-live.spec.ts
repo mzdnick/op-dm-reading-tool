@@ -131,4 +131,15 @@ test("loads the public Mici demo from the route form", async ({ page }) => {
   await expect(page).toHaveURL(new RegExp(`route=${encodeURIComponent(demo)}`));
   await page.locator("#route-scrubber").fill("447");
   await expect(page.locator("#route-clock")).toHaveText("7:27.0");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const telemetryCards = await page.locator(".debug-card").evaluateAll((cards) => cards.map((card) => {
+    const bounds = card.getBoundingClientRect();
+    return { top: bounds.top, bottom: bounds.bottom, width: bounds.width };
+  }));
+  expect(telemetryCards).toHaveLength(3);
+  expect(telemetryCards[1].top).toBeGreaterThanOrEqual(telemetryCards[0].bottom);
+  expect(telemetryCards[2].top).toBeGreaterThanOrEqual(telemetryCards[1].bottom);
+  expect(telemetryCards[1].width).toBe(telemetryCards[0].width);
+  await expect(page.locator("#model-values dd").first()).toHaveCSS("overflow-wrap", "normal");
 });

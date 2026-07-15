@@ -77,8 +77,8 @@ app.innerHTML = `
       <p><a href="https://github.com/commaai/openpilot" target="_blank" rel="noreferrer">openpilot's MIT license</a> lets you inspect, change, and run the software. Access to comma's servers is separate.</p>
       <ul class="policy-points">
         <li><strong>Do not weaken driver monitoring if you use comma's services.</strong> comma's <a href="https://github.com/commaai/openpilot/blob/master/docs/SAFETY.md#forks-of-openpilot" target="_blank" rel="noreferrer">fork safety policy</a> says violations can get a fork and its users banned. Nerfed timings and other bypasses have historically been detected through uploaded telemetry; the complete rules are not public.</li>
-        <li><strong>A ban means “Uploads ignored.”</strong> The device still runs local software, but comma stops processing its routes for <a href="https://connect.comma.ai" target="_blank" rel="noreferrer">comma Connect</a>.</li>
-        <li><strong>The effects spread.</strong> The hardware warranty still applies, but using it may become harder: <a href="https://comma.ai/support" target="_blank" rel="noreferrer">comma support</a> requires a route from the latest stock openpilot before a hardware ticket reaches an engineer. If that device's uploads are ignored, it cannot provide a processed Connect route from the reproduction, complicating the support process. Losing routes also makes fork debugging harder, and ignored drives cannot improve comma's future driving-model datasets.</li>
+        <li><strong>A ban means “Uploads ignored.”</strong> A server ban does not disable openpilot: it can still engage and operate locally. comma stops processing the device's uploaded routes for <a href="https://connect.comma.ai" target="_blank" rel="noreferrer">comma Connect</a>.</li>
+        <li><strong>The effects spread.</strong> The hardware warranty still applies, but using it may become harder: <a href="https://comma.ai/support" target="_blank" rel="noreferrer">comma support</a> requires a route from the latest stock openpilot before a hardware ticket reaches an engineer. If that device's uploads are ignored, it cannot provide a processed Connect route from the reproduction, complicating the support process. Losing routes also makes community fork debugging harder: without comma's infrastructure, fork authors and community helpers may need to walk users through manually extracting and transferring logs or video instead of opening a Connect link. Ignored drives also cannot improve comma's future driving-model datasets.</li>
       </ul>
       <p class="policy-caveat">Users have historically reported one courtesy ban reversal per device. This is not a published right or a current guarantee.</p>
       <div class="feedback-path">
@@ -93,7 +93,7 @@ app.innerHTML = `
               <figcaption><strong>Bookmark it when it happens.</strong> The bookmark makes the exact route time easy to find later.</figcaption>
             </figure>
           </li>
-          <li>Let the log and driver-camera segment upload to <a href="https://connect.comma.ai" target="_blank" rel="noreferrer">comma Connect</a>.</li>
+          <li>After the drive appears in <a href="https://connect.comma.ai" target="_blank" rel="noreferrer">comma Connect</a>, zoom in on the bookmarked moment and request its files using the steps below.</li>
         </ol>
         <div class="connect-tutorial">
           <h4>Get the link from comma Connect</h4>
@@ -101,10 +101,15 @@ app.innerHTML = `
             <li>Open the drive in comma Connect and find its timeline strip at the top.</li>
             <li>Click the timeline near the bookmarked moment to move the playhead there.</li>
             <li>Click and drag across a short window around the moment, then release. Connect zooms into that selection; repeat if you need a tighter clip.</li>
-            <li>Copy the full URL from the address bar. A clipped link ends in <code>/start/end</code> and is the same kind of link accepted at the top of this tool.</li>
+            <li>Open the <strong>Files</strong> dropdown and request uploads for both the logs and driver camera from the zoomed-in segment.</li>
+            <li>Once those uploads are available, copy the full URL from the address bar. A clipped link ends in <code>/start/end</code> and is the same kind of link accepted at the top of this tool.</li>
           </ol>
         </div>
-        <p class="feedback-destination"><strong>That Connect link and the bookmarked time are the evidence.</strong> These reports do get read: comma staff review submissions, and actionable reports may be acknowledged and <a href="https://discord.com/channels/469524606043160576/1524459897016549547/1524594138719322172" target="_blank" rel="noreferrer">added to known issues</a>. For a public route, send the evidence to <a href="https://discord.com/channels/469524606043160576/1254834193066623017" target="_blank" rel="noreferrer">#driving-feedback</a>. To keep sensitive driver video private, post the private link and timestamp in <a href="https://discord.com/channels/469524606043160576/616456819027607567" target="_blank" rel="noreferrer">#openpilot-experience</a>; comma staff can access it, other Discord users cannot.</p>
+        <p class="feedback-destination"><strong>That Connect link and the bookmarked time are the evidence.</strong> These reports do get read: comma staff review submissions, and actionable reports may be acknowledged and <a href="https://discord.com/channels/469524606043160576/1524459897016549547/1524594138719322172" target="_blank" rel="noreferrer">added to known issues</a>.</p>
+        <ul class="feedback-sharing-options">
+          <li><strong>Share it publicly.</strong> Turn on <strong>Make public</strong> in comma Connect, which makes the route accessible to anyone with its link. Then use the form in <a href="https://discord.com/channels/469524606043160576/765677302205775892" target="_blank" rel="noreferrer">#submit-feedback</a> and submit it to <a href="https://discord.com/channels/469524606043160576/1254834193066623017" target="_blank" rel="noreferrer">#driving-feedback</a>. The driving-feedback channel is locked, so users cannot create posts there directly.</li>
+          <li><strong>Keep it private.</strong> Leave <strong>Make public</strong> off and post the private link and timestamp in <a href="https://discord.com/channels/469524606043160576/616456819027607567" target="_blank" rel="noreferrer">#openpilot-experience</a>. comma staff can access it; other Discord users cannot.</li>
+        </ul>
       </div>
       <p class="policy-sources">Sources: <a href="https://docs.comma.ai/contributing/feedback/" target="_blank" rel="noreferrer">comma's feedback guide</a> · <a href="https://comma.ai/support" target="_blank" rel="noreferrer">comma support policy</a></p>
     </section>
