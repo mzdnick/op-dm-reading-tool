@@ -1,4 +1,4 @@
-import { proxyAthenaUploadRequest } from "../../../src/athenaProxy";
+import { proxyAthenaRequest } from "../../../src/athenaProxy";
 
 interface PagesContext {
   request: Request;
@@ -8,5 +8,5 @@ interface PagesContext {
 export function onRequest(context: PagesContext): Promise<Response> {
   const value = context.params.dongleId;
   const dongleId = Array.isArray(value) ? value[0] ?? "" : value ?? "";
-  return proxyAthenaUploadRequest(context.request, dongleId);
+  return proxyAthenaRequest(context.request, dongleId);
 }

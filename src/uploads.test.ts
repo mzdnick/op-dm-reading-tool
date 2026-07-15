@@ -30,6 +30,14 @@ describe("driver-video upload recovery", () => {
     const request = buildDriverVideoUploadRequest("abc123|route", [3, 4]);
     const fetcher = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(Response.json({ dcameras: ["https://files.test/abc/route/3/dcamera.hevc"] }))
+      .mockResolvedValueOnce(Response.json({ result: [{
+        path: "route--4/dcamera.hevc",
+        current: true,
+        progress: 0.5,
+        retry_count: 0,
+        allow_cellular: false,
+        priority: 0,
+      }] }))
       .mockResolvedValueOnce(Response.json({ dcameras: [
         "https://files.test/abc/route/3/dcamera.hevc",
         "https://files.test/abc/route/4/dcamera.hevc",
@@ -43,7 +51,12 @@ describe("driver-video upload recovery", () => {
       maxPolls: 2,
     });
 
-    expect(updates).toEqual(["Driver video uploaded (1/2 segments)"]);
+    expect(updates).toEqual(["Uploading driver video · 75%"]);
+    expect(fetcher.mock.calls[1][0]).toBe("/api/athena/abc123");
+    expect(JSON.parse(String(fetcher.mock.calls[1][1]?.body))).toMatchObject({
+      method: "listUploadQueue",
+      params: { paths: ["route--3/dcamera.hevc", "route--4/dcamera.hevc"] },
+    });
     expect(pause).toHaveBeenCalledOnce();
   });
 

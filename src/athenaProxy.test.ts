@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { proxyAthenaUploadRequest } from "./athenaProxy";
+import { proxyAthenaRequest } from "./athenaProxy";
 
 const DONGLE_ID = "5beb9b58bd12b691";
 
@@ -8,7 +8,7 @@ describe("Athena upload proxy", () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ result: "Device offline, message queued" }));
     const request = uploadRequest();
 
-    const response = await proxyAthenaUploadRequest(request, DONGLE_ID, fetcher);
+    const response = await proxyAthenaRequest(request, DONGLE_ID, fetcher);
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ result: "Device offline, message queued" });
@@ -22,7 +22,7 @@ describe("Athena upload proxy", () => {
 
   it("rejects requests without a comma JWT", async () => {
     const fetcher = vi.fn<typeof fetch>();
-    const response = await proxyAthenaUploadRequest(uploadRequest({ authorization: null }), DONGLE_ID, fetcher);
+    const response = await proxyAthenaRequest(uploadRequest({ authorization: null }), DONGLE_ID, fetcher);
 
     expect(response.status).toBe(401);
     expect(fetcher).not.toHaveBeenCalled();
@@ -32,11 +32,11 @@ describe("Athena upload proxy", () => {
     const fetcher = vi.fn<typeof fetch>();
     const payload = uploadPayload();
     payload.method = "reboot";
-    const methodResponse = await proxyAthenaUploadRequest(uploadRequest({ payload }), DONGLE_ID, fetcher);
+    const methodResponse = await proxyAthenaRequest(uploadRequest({ payload }), DONGLE_ID, fetcher);
 
     const wrongFile = uploadPayload();
     wrongFile.params.files_data[0].fn = "route--4/rlog.bz2";
-    const fileResponse = await proxyAthenaUploadRequest(uploadRequest({ payload: wrongFile }), DONGLE_ID, fetcher);
+    const fileResponse = await proxyAthenaRequest(uploadRequest({ payload: wrongFile }), DONGLE_ID, fetcher);
 
     expect(methodResponse.status).toBe(400);
     expect(fileResponse.status).toBe(400);
@@ -45,10 +45,53 @@ describe("Athena upload proxy", () => {
 
   it("returns a controlled gateway error when Athena is unavailable", async () => {
     const fetcher = vi.fn<typeof fetch>().mockRejectedValue(new TypeError("network down"));
-    const response = await proxyAthenaUploadRequest(uploadRequest(), DONGLE_ID, fetcher);
+    const response = await proxyAthenaRequest(uploadRequest(), DONGLE_ID, fetcher);
 
     expect(response.status).toBe(502);
     expect(await response.json()).toEqual({ error: "Could not reach comma Athena." });
+  });
+
+  it("returns only requested queue progress without signed URLs", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({
+      id: 0,
+      jsonrpc: "2.0",
+      result: [
+        {
+          path: "0000010a--a51155e496--4/dcamera.hevc",
+          url: "https://secret-upload.example/route/4/dcamera.hevc?signed=yes",
+          headers: { Authorization: "secret" },
+          current: true,
+          progress: 0.46,
+          retry_count: 1,
+          allow_cellular: false,
+          priority: 0,
+        },
+        {
+          path: "another-route--5/dcamera.hevc",
+          url: "https://secret-upload.example/other?signed=yes",
+          current: false,
+          progress: 0.2,
+        },
+      ],
+    }));
+
+    const response = await proxyAthenaRequest(queueRequest(), DONGLE_ID, fetcher);
+    const json = await response.json();
+
+    expect(json).toEqual({
+      id: 0,
+      jsonrpc: "2.0",
+      result: [{
+        path: "0000010a--a51155e496--4/dcamera.hevc",
+        current: true,
+        progress: 0.46,
+        retry_count: 1,
+        allow_cellular: false,
+        priority: 0,
+      }],
+    });
+    expect(JSON.stringify(json)).not.toContain("secret-upload");
+    expect(fetcher.mock.calls[0][1]?.body).toBe(JSON.stringify({ id: 0, jsonrpc: "2.0", method: "listUploadQueue" }));
   });
 });
 
@@ -79,4 +122,17 @@ function uploadPayload() {
     },
     expiry: 123456789,
   };
+}
+
+function queueRequest(): Request {
+  return new Request(`https://opdm.mindflakes.com/api/athena/${DONGLE_ID}`, {
+    method: "POST",
+    headers: { Authorization: "JWT test-token", "Content-Type": "application/json" },
+    body: JSON.stringify({
+      id: 0,
+      jsonrpc: "2.0",
+      method: "listUploadQueue",
+      params: { paths: ["0000010a--a51155e496--4/dcamera.hevc"] },
+    }),
+  });
 }

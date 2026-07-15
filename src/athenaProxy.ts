@@ -4,7 +4,11 @@ const MAX_UPLOAD_FILES = 32;
 const DONGLE_ID_PATTERN = /^[a-f0-9]{16}$/i;
 const DRIVER_VIDEO_PATH_PATTERN = /^[a-z0-9_-]+--\d+\/dcamera\.hevc$/i;
 
-export async function proxyAthenaUploadRequest(
+type AllowedAthenaRequest =
+  | { kind: "upload"; outbound: Record<string, unknown> }
+  | { kind: "queue"; outbound: Record<string, unknown>; paths: string[] };
+
+export async function proxyAthenaRequest(
   request: Request,
   dongleId: string,
   fetcher: typeof fetch = fetch,
@@ -32,11 +36,12 @@ export async function proxyAthenaUploadRequest(
   } catch {
     return jsonResponse({ error: "Upload request must be valid JSON." }, 400);
   }
-  if (!isAllowedUploadPayload(payload)) {
-    return jsonResponse({ error: "Only driver-video upload requests are allowed." }, 400);
+  const allowed = allowedAthenaRequest(payload);
+  if (!allowed) {
+    return jsonResponse({ error: "Only driver-video upload and progress requests are allowed." }, 400);
   }
 
-  const body = JSON.stringify(payload);
+  const body = JSON.stringify(allowed.outbound);
   if (body.length > MAX_REQUEST_BYTES) {
     return jsonResponse({ error: "Upload request is too large." }, 413);
   }
@@ -50,6 +55,10 @@ export async function proxyAthenaUploadRequest(
       },
       body,
     });
+    if (allowed.kind === "queue" && response.ok) {
+      const queuePayload = await response.json() as unknown;
+      return sanitizedQueueResponse(queuePayload, allowed.paths, response.status);
+    }
     const responseBody = await response.arrayBuffer();
     return new Response(responseBody, {
       status: response.status,
@@ -61,16 +70,67 @@ export async function proxyAthenaUploadRequest(
   }
 }
 
-function isAllowedUploadPayload(payload: unknown): payload is Record<string, unknown> {
-  if (!isRecord(payload) || payload.jsonrpc !== "2.0" || payload.method !== "uploadFilesToUrls") return false;
-  if (!isRecord(payload.params) || !Array.isArray(payload.params.files_data)) return false;
+function allowedAthenaRequest(payload: unknown): AllowedAthenaRequest | null {
+  if (!isRecord(payload) || payload.jsonrpc !== "2.0") return null;
+  if (payload.method === "listUploadQueue") {
+    if (!isRecord(payload.params) || !isDriverVideoPaths(payload.params.paths)) return null;
+    return {
+      kind: "queue",
+      paths: payload.params.paths,
+      outbound: { id: payload.id ?? 0, jsonrpc: "2.0", method: "listUploadQueue" },
+    };
+  }
+  if (payload.method !== "uploadFilesToUrls") return null;
+  if (!isRecord(payload.params) || !Array.isArray(payload.params.files_data)) return null;
   const files = payload.params.files_data;
-  if (files.length === 0 || files.length > MAX_UPLOAD_FILES) return false;
-  return files.every((file) => {
+  if (files.length === 0 || files.length > MAX_UPLOAD_FILES) return null;
+  const valid = files.every((file) => {
     if (!isRecord(file) || typeof file.fn !== "string" || !DRIVER_VIDEO_PATH_PATTERN.test(file.fn)) return false;
     if (typeof file.url !== "string" || !isHttpsUrl(file.url)) return false;
     return file.allow_cellular === false && isRecord(file.headers);
   });
+  return valid ? { kind: "upload", outbound: payload } : null;
+}
+
+function isDriverVideoPaths(value: unknown): value is string[] {
+  return Array.isArray(value)
+    && value.length > 0
+    && value.length <= MAX_UPLOAD_FILES
+    && value.every((path) => typeof path === "string" && DRIVER_VIDEO_PATH_PATTERN.test(path));
+}
+
+function sanitizedQueueResponse(payload: unknown, requestedPaths: string[], status: number): Response {
+  if (!isRecord(payload)) return jsonResponse({ error: "comma Athena returned an invalid queue response." }, 502);
+  if (!Array.isArray(payload.result)) {
+    const result = typeof payload.result === "string" ? payload.result : [];
+    return jsonResponse({ id: payload.id ?? 0, jsonrpc: "2.0", result }, status);
+  }
+  const result = payload.result.flatMap((item) => {
+    if (!isRecord(item) || typeof item.path !== "string") return [];
+    const itemPath = item.path;
+    if (!requestedPaths.some((path) => matchesPath(itemPath, path))) return [];
+    return [{
+      path: itemPath,
+      current: item.current === true,
+      progress: clampProgress(item.progress),
+      retry_count: finiteNumber(item.retry_count),
+      allow_cellular: item.allow_cellular === true,
+      priority: finiteNumber(item.priority),
+    }];
+  });
+  return jsonResponse({ id: payload.id ?? 0, jsonrpc: "2.0", result }, status);
+}
+
+function matchesPath(candidate: string, requested: string): boolean {
+  return candidate === requested || candidate.endsWith(`/${requested}`);
+}
+
+function clampProgress(value: unknown): number {
+  return Math.min(1, Math.max(0, finiteNumber(value)));
+}
+
+function finiteNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

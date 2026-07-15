@@ -303,7 +303,11 @@ function renderMissingDriverVideo(error: MissingDriverVideoError, routeInput: st
     <h2>Driver video is not uploaded</h2>
     <p>The selected ${segmentLabel} may still be on the device. Driver-camera recording must have been enabled when this drive occurred.</p>
     ${isSignedIn()
-      ? `<button id="queue-video-upload" type="button">Request upload from device</button><small>Queues over comma Athena, waits for Wi-Fi, and opens the clip automatically when ready.</small>`
+      ? `<button id="queue-video-upload" type="button">Request upload from device</button><small>Queues over comma Athena, waits for Wi-Fi, and opens the clip automatically when ready.</small>
+        <div id="upload-progress" class="upload-progress" role="progressbar" aria-label="Driver-video upload progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden>
+          <div class="upload-progress-heading"><span id="upload-progress-message">Requesting upload…</span><strong id="upload-progress-percent">0%</strong></div>
+          <div class="upload-progress-track"><i id="upload-progress-bar"></i></div>
+        </div>`
       : `<p class="muted">Authenticate above with the device owner's comma JWT to request the missing file.</p>`}
   </section>`;
   if (!isSignedIn()) return;
@@ -319,18 +323,22 @@ async function queueAndWatchDriverVideo(error: MissingDriverVideoError, routeInp
   const button = byId<HTMLButtonElement>("queue-video-upload");
   button.disabled = true;
   button.textContent = "Requesting upload…";
+  renderUploadProgress("Requesting upload…", 0);
   const request = buildDriverVideoUploadRequest(error.routeName, error.segments);
   try {
     const queued = await queueDriverVideoUpload(request);
     if (currentUploadController !== controller) return;
     button.textContent = "Watching upload…";
+    renderUploadProgress(queued, 0);
     setProgress(queued, 0.08);
     await watchDriverVideoUpload(request, ({ message, progress }) => {
       if (currentUploadController !== controller) return;
+      renderUploadProgress(message, progress);
       setProgress(message, 0.08 + (progress ?? 0) * 0.92);
     }, controller.signal);
     if (currentUploadController !== controller) return;
     currentUploadController = null;
+    renderUploadProgress("Driver video uploaded", 1);
     setProgress("Driver video uploaded · opening clip", 1);
     await loadRoute(routeInput, false);
   } catch (uploadError) {
@@ -338,8 +346,26 @@ async function queueAndWatchDriverVideo(error: MissingDriverVideoError, routeInp
     currentUploadController = null;
     button.disabled = false;
     button.textContent = "Try upload again";
+    renderUploadProgress("Upload request failed", undefined, true);
     setProgress(uploadError instanceof Error ? uploadError.message : String(uploadError), 1, true);
   }
+}
+
+function renderUploadProgress(message: string, progress?: number, error = false): void {
+  const container = document.querySelector<HTMLElement>("#upload-progress");
+  const label = document.querySelector<HTMLElement>("#upload-progress-message");
+  const percentLabel = document.querySelector<HTMLElement>("#upload-progress-percent");
+  const bar = document.querySelector<HTMLElement>("#upload-progress-bar");
+  if (!container || !label || !percentLabel || !bar) return;
+  const previous = Number(container.getAttribute("aria-valuenow") ?? 0) / 100;
+  const fraction = Math.min(1, Math.max(0, progress ?? previous));
+  const percent = Math.round(fraction * 100);
+  container.hidden = false;
+  container.classList.toggle("error", error);
+  container.setAttribute("aria-valuenow", String(percent));
+  label.textContent = message;
+  percentLabel.textContent = `${percent}%`;
+  bar.style.width = `${percent}%`;
 }
 
 function renderRouteScan(update: RouteScanUpdate): void {

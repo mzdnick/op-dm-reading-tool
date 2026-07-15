@@ -24,6 +24,14 @@ interface AthenaResponse {
   offline?: boolean;
   result?: unknown;
 }
+interface UploadQueueItem {
+  path: string;
+  current: boolean;
+  progress: number;
+  retry_count: number;
+  allow_cellular: boolean;
+  priority: number;
+}
 
 export function buildDriverVideoUploadRequest(routeName: string, segments: number[]): DriverVideoUploadRequest {
   const parsed = parseRouteInput(routeName);
@@ -105,6 +113,7 @@ export async function watchDriverVideoUpload(
   const fetcher = options.fetcher ?? fetch;
   const pause = options.pause ?? abortablePause;
   const maxPolls = options.maxPolls ?? 450;
+  let highestProgress = 0;
   for (let poll = 0; poll < maxPolls; poll += 1) {
     if (signal.aborted) throw new DOMException("Upload watch cancelled", "AbortError");
     let filesResponse: Response;
@@ -126,16 +135,80 @@ export async function watchDriverVideoUpload(
       const uploaded = new Set((files.dcameras ?? []).map(segmentFromUrl));
       const complete = request.segments.filter((segment) => uploaded.has(segment)).length;
       if (complete === request.segments.length) return;
+      const incompletePaths = request.paths.filter((_, index) => !uploaded.has(request.segments[index]));
+      let queueResult: AthenaResponse | null = null;
+      try {
+        queueResult = await fetchUploadQueue(request, fetcher);
+      } catch (error) {
+        if (error instanceof UploadQueueAuthError) throw error;
+      }
+      const queueItems = Array.isArray(queueResult?.result)
+        ? queueResult.result.filter(isUploadQueueItem)
+        : [];
+      const matchingItems = queueItems.filter((item) => incompletePaths.some((path) => matchesUploadPath(item.path, path)));
+      const queuedProgress = incompletePaths.reduce((sum, path) => {
+        const progress = matchingItems
+          .filter((item) => matchesUploadPath(item.path, path))
+          .reduce((maximum, item) => Math.max(maximum, clampProgress(item.progress)), 0);
+        return sum + progress;
+      }, 0);
+      highestProgress = Math.max(highestProgress, (complete + queuedProgress) / request.segments.length);
+      const percent = Math.round(highestProgress * 100);
+      const offline = queueResult?.result === "Device offline, message queued";
+      const active = matchingItems.some((item) => item.current);
       onUpdate({
-        message: complete > 0
-          ? `Driver video uploaded (${complete}/${request.segments.length} segments)`
-          : "Waiting for driver video from the device…",
-        progress: complete / request.segments.length,
+        message: active
+          ? `Uploading driver video · ${percent}%`
+          : matchingItems.length > 0
+            ? `Driver video queued on device · ${percent}%`
+            : offline
+              ? "Upload queued · waiting for the device to come online"
+              : complete > 0
+                ? `Processing driver video (${complete}/${request.segments.length} segments available)`
+                : "Waiting for driver video from the device…",
+        progress: highestProgress,
       });
     }
     await pause(2_000, signal);
   }
   throw new Error("The upload is still queued. Leave the device on Wi-Fi and reload this clip later.");
+}
+
+async function fetchUploadQueue(request: DriverVideoUploadRequest, fetcher: typeof fetch): Promise<AthenaResponse | null> {
+  const response = await fetcher(`${ATHENA_PROXY_BASE_URL}/${request.dongleId}`, {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({
+      id: 0,
+      jsonrpc: "2.0",
+      method: "listUploadQueue",
+      params: { paths: request.paths },
+    }),
+  });
+  if (response.status === 401 || response.status === 403) throw new UploadQueueAuthError();
+  if (!response.ok) return null;
+  return response.json() as Promise<AthenaResponse>;
+}
+
+class UploadQueueAuthError extends Error {
+  constructor() {
+    super("The saved JWT can no longer watch this device's upload queue.");
+  }
+}
+
+function isUploadQueueItem(value: unknown): value is UploadQueueItem {
+  return typeof value === "object"
+    && value !== null
+    && typeof (value as UploadQueueItem).path === "string"
+    && typeof (value as UploadQueueItem).progress === "number";
+}
+
+function matchesUploadPath(candidate: string, requested: string): boolean {
+  return candidate === requested || candidate.endsWith(`/${requested}`);
+}
+
+function clampProgress(value: number): number {
+  return Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0));
 }
 
 function isUploadResult(result: unknown): result is { failed?: string[] } {

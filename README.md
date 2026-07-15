@@ -62,8 +62,11 @@ footage is sensitive: check what is visible before sharing your screen or route.
 
 If a clip's driver video has not uploaded yet, an owner JWT can request only the
 missing `dcamera.hevc` segments from the device. The app queues the request
-through comma Athena, watches until the files appear, and then opens the clip.
-Offline requests wait for the device to reconnect; uploads are Wi-Fi-only.
+through comma Athena, polls the device's filtered upload-queue status for live
+progress, watches until the files appear, and then opens the clip. Offline
+requests wait for the device to reconnect; uploads are Wi-Fi-only. The relay
+returns only progress for the requested paths and strips signed upload URLs and
+headers before responding to the browser.
 
 ## Using the debugger
 
