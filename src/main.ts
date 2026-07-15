@@ -84,6 +84,7 @@ app.innerHTML = `
       <div class="feedback-path">
         <h3>Driver monitoring false positive? Send evidence.</h3>
         <p class="feedback-lead"><strong>Getting flagged while attentive?</strong> Do not weaken or bypass driver monitoring. Capture one clean reproduction and report the false positive to comma instead:</p>
+        <p class="phone-in-hand-note"><strong>Phone in hand is not a false positive.</strong> Newer driver-monitoring models can classify a handheld phone as distraction, including while you use voice-to-text. Put the phone in a mount and reproduce the issue hands-free before filing a report. <a href="https://discord.com/channels/469524606043160576/954493346250887168/1526951756112723998" target="_blank" rel="noreferrer">See geohot's explanation.</a></p>
         <ol>
           <li>Enable driver-camera recording before the drive.</li>
           <li>
