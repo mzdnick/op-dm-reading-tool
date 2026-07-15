@@ -3,7 +3,7 @@ import { API_BASE_URL } from "./constants";
 import { parseRouteInput } from "./routeInput";
 import { segmentFromUrl, type RouteFiles } from "./routes";
 
-const ATHENA_BASE_URL = "https://athena.comma.ai";
+const ATHENA_PROXY_BASE_URL = "/api/athena";
 const UPLOAD_EXPIRY_SECONDS = 7 * 24 * 60 * 60;
 
 export interface DriverVideoUploadRequest {
@@ -71,11 +71,19 @@ export async function queueDriverVideoUpload(
     },
     expiry: Math.floor(Date.now() / 1_000) + UPLOAD_EXPIRY_SECONDS,
   };
-  const athenaResponse = await fetcher(`${ATHENA_BASE_URL}/${request.dongleId}`, {
-    method: "POST",
-    headers: { ...authHeaders(), "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+  let athenaResponse: Response;
+  try {
+    athenaResponse = await fetcher(`${ATHENA_PROXY_BASE_URL}/${request.dongleId}`, {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    throw new Error("Could not reach the driver-video upload relay.");
+  }
+  if (athenaResponse.status === 401 || athenaResponse.status === 403) {
+    throw new Error("This JWT cannot request uploads for that device. The device owner must queue it.");
+  }
   if (!athenaResponse.ok) throw new Error(`Could not queue the device upload (${athenaResponse.status}).`);
   const result = await athenaResponse.json() as AthenaResponse;
   if (result.error) throw new Error(result.error.data?.message ?? result.error.message ?? "The device rejected the upload request.");

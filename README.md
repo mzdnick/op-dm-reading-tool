@@ -1,6 +1,6 @@
 # openpilot driver monitoring debugger
 
-An all-client-side web debugger for openpilot Driver Monitoring. Paste a comma
+An in-browser web debugger for openpilot Driver Monitoring. Paste a comma
 Connect route or clip URL to replay uploaded driver-camera video alongside the
 state that openpilot used to decide whether the driver was attentive.
 
@@ -10,8 +10,10 @@ awareness, distraction reasons, alerts, face and eye probabilities, phone and
 sunglasses probabilities, pose/calibration values, and coarse driver/other-seat
 boxes over the synchronized camera feed.
 
-Everything runs in the browser. Route logs, video, and JWTs are not uploaded to
-this project or a project-owned backend.
+Route logs and video stay in the browser. A narrowly scoped Cloudflare Pages
+Function relays owner-initiated driver-video upload requests to comma Athena,
+whose CORS policy does not allow direct requests from this site's origin. The
+relay forwards the JWT to comma for that request and does not persist it.
 
 ## Try the public Mici demo
 
@@ -114,6 +116,17 @@ pnpm install
 pnpm dev
 ```
 
+`pnpm dev` runs the fast Vite frontend. To test missing driver-video upload
+requests through the same Pages Function used in production, run:
+
+```sh
+pnpm dev:pages
+```
+
+That builds the app and serves the full Pages application at
+`http://127.0.0.1:8788`. Wrangler reloads Function changes; rerun the command
+after changing frontend source so `dist` is rebuilt.
+
 Useful checks:
 
 ```sh
@@ -129,9 +142,11 @@ the variables are absent.
 
 ## Deployment
 
-The app is a static Vite site. For Cloudflare Pages, use `pnpm build` and publish
-`dist`. No server-side function is required, and secrets must never be added as
-`VITE_` variables because those are exposed to browser code.
+The app is a Vite site with one Cloudflare Pages Function under `functions/`.
+For Cloudflare Pages, use `pnpm build` and publish `dist`; Wrangler discovers and
+deploys the upload relay with the static assets. No server-side secret is
+required. Secrets must never be added as `VITE_` variables because those are
+exposed to browser code.
 
 ## How the streaming path works
 
@@ -146,6 +161,8 @@ playback, so short Connect clip URLs are preferable to very long ranges.
 ## Privacy and limitations
 
 - JWTs are stored only in the current browser, as in the original route tool.
+  When the device owner requests a missing driver-video upload, the JWT passes
+  through the same-origin Pages Function to comma Athena and is not persisted.
 - Face boxes are coarse model-derived anchors, not face detections or privacy
   redaction.
 - This is diagnostic tooling, not a replacement for openpilot's safety checks.

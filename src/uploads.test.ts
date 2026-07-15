@@ -18,6 +18,7 @@ describe("driver-video upload recovery", () => {
       .mockResolvedValueOnce(Response.json({ result: "Device offline, message queued" }));
 
     await expect(queueDriverVideoUpload(request, fetcher)).resolves.toContain("waiting for the device");
+    expect(fetcher.mock.calls[1][0]).toBe("/api/athena/abc123");
     const athenaBody = JSON.parse(String(fetcher.mock.calls[1][1]?.body));
     expect(athenaBody).toMatchObject({
       method: "uploadFilesToUrls",
