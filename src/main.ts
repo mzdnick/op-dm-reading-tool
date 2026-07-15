@@ -423,8 +423,8 @@ function renderViewer(route: DriverDebugRoute): void {
     <div class="video-shell">
       <video id="driver-video" muted playsinline></video>
       <div class="model-input-frame" aria-hidden="true"></div>
-      <div id="driver-box" class="face-box driver-box" hidden><span>DRIVER SEAT</span></div>
-      <div id="other-box" class="face-box other-box" hidden><span>OTHER SEAT</span></div>
+      <div id="driver-box" class="face-box driver-box" role="button" tabindex="0" aria-label="Fade driver seat overlay" aria-pressed="false" title="Hover or tap to see the face" hidden><span>DRIVER SEAT</span></div>
+      <div id="other-box" class="face-box other-box" role="button" tabindex="0" aria-label="Fade other seat overlay" aria-pressed="false" title="Hover or tap to see the face" hidden><span>OTHER SEAT</span></div>
       <div id="video-placeholder" class="video-placeholder">
         <div class="video-load-panel">
           <p id="video-placeholder-copy">${support.supported ? "Preparing driver video…" : "HEVC video unsupported — telemetry is still available."}</p>
@@ -475,6 +475,19 @@ function renderViewer(route: DriverDebugRoute): void {
 
   const video = byId<HTMLVideoElement>("driver-video");
   const scrubber = byId<HTMLInputElement>("route-scrubber");
+  for (const id of ["driver-box", "other-box"]) {
+    const box = byId<HTMLElement>(id);
+    const togglePeek = () => {
+      const peeking = box.classList.toggle("peek");
+      box.setAttribute("aria-pressed", String(peeking));
+    };
+    box.addEventListener("click", togglePeek);
+    box.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      togglePeek();
+    });
+  }
   scrubber.style.setProperty("--dm-timeline", buildMonitoringTimelineGradient(route.monitoring, route.startSeconds, route.endSeconds, route.models));
   const playbackToggle = byId<HTMLButtonElement>("playback-toggle");
   if (support.supported) {

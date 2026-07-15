@@ -147,7 +147,8 @@ test("loads the public Mici demo from the route form", async ({ page }) => {
   await page.locator("#demo-button").click();
   await expect(page.locator("#route-input")).toHaveValue(demo);
   await expect(page.locator("#status-text")).toHaveText("Driver Monitoring debugger ready");
-  await expect(page.locator("#driver-box")).toBeVisible();
+  const driverBox = page.locator("#driver-box");
+  await expect(driverBox).toBeVisible();
   await expect(page.locator("#route-clock")).toHaveText("7:26.0");
   await expect(page.locator("#model-values")).toContainText("87%");
   await expect(page.locator("#route-scrubber")).toHaveAttribute("style", /#e08546/);
@@ -156,6 +157,16 @@ test("loads the public Mici demo from the route form", async ({ page }) => {
   await expect(page.locator(".timeline-alert-marker")).toHaveCount(0);
   await expect(page).toHaveURL(/[?&]t=446(?:&|$)/);
   await expect(page).toHaveURL(new RegExp(`route=${encodeURIComponent(demo)}`));
+  await driverBox.hover();
+  await expect(driverBox).toHaveCSS("opacity", "0.12");
+  await driverBox.click();
+  await page.locator("#route-clock").hover();
+  await expect(driverBox).toHaveClass(/peek/);
+  await expect(driverBox).toHaveCSS("opacity", "0.12");
+  await driverBox.click();
+  await page.locator("#route-clock").hover();
+  await expect(driverBox).not.toHaveClass(/peek/);
+  await expect(driverBox).toHaveCSS("opacity", "1");
   await page.locator("#route-scrubber").fill("447");
   await expect(page.locator("#route-clock")).toHaveText("7:27.0");
 
