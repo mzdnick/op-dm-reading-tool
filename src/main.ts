@@ -77,13 +77,14 @@ app.innerHTML = `
       <p><a href="https://github.com/commaai/openpilot" target="_blank" rel="noreferrer">openpilot's MIT license</a> lets you inspect, change, and run the software. Access to comma's servers is separate.</p>
       <ul class="policy-points">
         <li><strong>Do not weaken driver monitoring if you use comma's services.</strong> comma's <a href="https://github.com/commaai/openpilot/blob/master/docs/SAFETY.md#forks-of-openpilot" target="_blank" rel="noreferrer">fork safety policy</a> says violations can get a fork and its users banned. Nerfed timings and other bypasses have historically been detected through uploaded telemetry; the complete rules are not public.</li>
+        <li><strong>The stated consequences can extend beyond Connect.</strong> In a <a href="https://discord.com/channels/469524606043160576/954493346250887168/1526980696894345480" target="_blank" rel="noreferrer">public warning about modified driver-monitoring code</a>, George Hotz says comma will ban offenders from its servers and, when it can identify them, from its shop.</li>
         <li><strong>A ban means “Uploads ignored.”</strong> A server ban does not disable openpilot: it can still engage and operate locally, and the device can still receive software updates. comma stops processing the device's uploaded routes for <a href="https://connect.comma.ai" target="_blank" rel="noreferrer">comma Connect</a>, and “uploads ignored” may also stop device telemetry from reaching comma's services when the device is not driving.</li>
         <li><strong>The effects spread.</strong> The hardware warranty still applies. For a device issue that occurs while driving, however, getting support may become harder: <a href="https://comma.ai/support" target="_blank" rel="noreferrer">comma support</a> requires a route from the latest stock openpilot before a hardware ticket reaches an engineer. If that device's uploads are ignored, it cannot provide a processed Connect route from the reproduction, complicating the support process. Losing routes also makes community fork debugging harder: without comma's infrastructure, fork authors and community helpers may need to walk users through manually extracting and transferring logs or video instead of opening a Connect link. Ignored drives also cannot improve comma's future driving-model datasets.</li>
       </ul>
       <p class="policy-caveat">Users have historically reported one courtesy ban reversal per device. This is not a published right or a current guarantee.</p>
       <div class="feedback-path">
         <h3>Driver monitoring false positive? Send evidence.</h3>
-        <p class="feedback-lead"><strong>Getting flagged while attentive?</strong> Do not weaken or bypass driver monitoring. Capture one clean reproduction and report the false positive to comma instead:</p>
+        <p class="feedback-lead"><strong>Getting flagged while attentive?</strong> Do not weaken or bypass driver monitoring. Capture one clean reproduction and report the false positive to comma instead. In that same <a href="https://discord.com/channels/469524606043160576/954493346250887168/1526980696894345480" target="_blank" rel="noreferrer">warning</a>, Hotz asks attentive drivers who were not holding a phone to send the affected segment, says those fixes get high priority, and cites rare objects such as Celsius cans being mistaken for phones.</p>
         <p class="phone-in-hand-note"><strong>Phone in hand is not a false positive.</strong> Newer driver-monitoring models can classify a handheld phone as distraction, including while you use voice-to-text. In <a href="https://discord.com/channels/469524606043160576/954493346250887168/1526951756112723998" target="_blank" rel="noreferrer">explaining comma's driver-monitoring behavior</a>, comma founder George Hotz (geohot) cites California <a href="https://leginfo.legislature.ca.gov/faces/codes_displaySection.xhtml?lawCode=VEH&amp;sectionNum=23123.5." target="_blank" rel="noreferrer">Vehicle Code §23123.5</a> as a reference point. He notes that the law goes further than comma's enforcement, while holding a phone during a drive is still a driver-monitoring trigger. Put the phone in a mount and reproduce the issue hands-free before filing a report.</p>
         <ol>
           <li>Enable driver-camera recording before the drive.</li>
@@ -256,6 +257,11 @@ async function loadRoute(routeInput: string, updateHistory: boolean): Promise<vo
   viewer.hidden = true;
   videoPlayer?.destroy();
   videoPlayer = null;
+  input.value = routeInput.trim();
+  if (updateHistory) {
+    window.history.pushState({}, "", buildRouteShareUrl(window.location.origin, import.meta.env.BASE_URL, routeInput));
+    shareButton.disabled = false;
+  }
   try {
     const result = await loadDriverDebugRoute(
       routeInput,
@@ -263,11 +269,6 @@ async function loadRoute(routeInput: string, updateHistory: boolean): Promise<vo
       { highResolutionTelemetry: highResolutionTelemetry.checked },
     );
     currentRoute = result;
-    input.value = routeInput.trim();
-    if (updateHistory) {
-      window.history.pushState({}, "", buildRouteShareUrl(window.location.origin, import.meta.env.BASE_URL, routeInput));
-      shareButton.disabled = false;
-    }
     renderViewer(result);
     void updateModelProvenance(result);
     setProgress(
@@ -500,6 +501,7 @@ function renderViewer(route: DriverDebugRoute): void {
     queueRouteTimeUrlUpdate(routeSeconds);
   });
   renderTelemetry(initialRouteSeconds);
+  queueRouteTimeUrlUpdate(initialRouteSeconds);
 }
 
 async function updateModelProvenance(route: DriverDebugRoute): Promise<void> {

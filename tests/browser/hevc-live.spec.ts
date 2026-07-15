@@ -114,6 +114,33 @@ test("opens and advances a route-time deep link", async ({ page }) => {
   await expect.poll(() => Number(new URL(page.url()).searchParams.get("t"))).toBeGreaterThan(270);
 });
 
+test("keeps the submitted route in the address bar while driver video is missing", async ({ page }) => {
+  const clip = `${PUBLIC_MICI_ROUTE}/247/276`;
+  await page.route("https://api.comma.ai/v1/route/**", async (route) => {
+    if (new URL(route.request().url()).pathname.endsWith("/files")) {
+      await route.fulfill({
+        contentType: "application/json",
+        json: {
+          qlogs: ["https://example.test/5beb9b58bd12b691/0000010a--a51155e496/3/qlog.zst"],
+          dcameras: [],
+        },
+      });
+      return;
+    }
+    await route.fulfill({
+      contentType: "application/json",
+      json: { fullname: "5beb9b58bd12b691|0000010a--a51155e496" },
+    });
+  });
+
+  await page.goto("/");
+  await page.locator("#route-input").fill(clip);
+  await page.locator("#load-button").click();
+
+  await expect(page.locator(".missing-video")).toContainText("Driver video is not uploaded");
+  await expect(page).toHaveURL(new RegExp(`route=${encodeURIComponent(clip)}`));
+});
+
 test("loads the public Mici demo from the route form", async ({ page }) => {
   const demo = `${PUBLIC_MICI_ROUTE}/438/452`;
   await page.goto("/");
