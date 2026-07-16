@@ -2,6 +2,7 @@ import "./styles.css";
 import { checkAccessToken, completeAuthCallback, isSignedIn, setAccessToken, signOut, type AuthCheckResult } from "./auth";
 import { loadDriverDebugRoute, MissingDriverVideoError, type DriverDebugRoute } from "./debugger";
 import { sampleAt, selectDriver, type DriverModelData, type DriverMonitoringSample } from "./dm";
+import { parseFaceRendererMode, projectFaceAnchor, resolveDriverCameraProfile, type FaceRendererMode, type VideoDimensions } from "./faceGeometry";
 import { formatModelProvenance, modelProvenanceDetails, resolveDmModelProvenance, routeModelProvenance } from "./modelProvenance";
 import { buildAuthCallbackCleanUrl, buildRouteShareUrl, buildRouteTimeUrl, parseRouteInput, routeInputFromUrl, routeTimeFromUrl } from "./routeInput";
 import { scanDriverMonitoringRoute, type RouteScanUpdate } from "./scan";
@@ -12,6 +13,7 @@ import { DriverVideoPlayer, detectHevcSupport } from "./video";
 
 const PUBLIC_MICI_DEMO_ROUTE = "https://connect.comma.ai/5beb9b58bd12b691/0000010a--a51155e496/438/452";
 const PUBLIC_MICI_DEMO_TIME = 446;
+const FACE_RENDERER_QUERY_PARAM = "faceRenderer";
 
 const app = document.querySelector<HTMLDivElement>("#app");
 if (!app) throw new Error("Missing app element");
@@ -141,6 +143,8 @@ byId<HTMLElement>("codec-summary").textContent = support.supported
 
 let currentRoute: DriverDebugRoute | null = null;
 let videoPlayer: DriverVideoPlayer | null = null;
+let currentVideoDimensions: VideoDimensions | null = null;
+let faceRendererMode: FaceRendererMode = parseFaceRendererMode(new URL(window.location.href).searchParams.get(FACE_RENDERER_QUERY_PARAM));
 let currentScanController: AbortController | null = null;
 let currentUploadController: AbortController | null = null;
 let authCheck: AuthCheckResult = isSignedIn() ? { status: "checking" } : { status: "missing" };
@@ -214,7 +218,7 @@ async function handleRouteInput(routeInput: string, updateHistory: boolean): Pro
 
 async function loadPublicMiciDemo(): Promise<void> {
   input.value = PUBLIC_MICI_DEMO_ROUTE;
-  const routeUrl = buildRouteShareUrl(window.location.origin, import.meta.env.BASE_URL, PUBLIC_MICI_DEMO_ROUTE);
+  const routeUrl = withFaceRendererMode(buildRouteShareUrl(window.location.origin, import.meta.env.BASE_URL, PUBLIC_MICI_DEMO_ROUTE));
   window.history.pushState({}, "", buildRouteTimeUrl(routeUrl, PUBLIC_MICI_DEMO_TIME));
   shareButton.disabled = false;
   await loadRoute(PUBLIC_MICI_DEMO_ROUTE, false);
@@ -226,12 +230,13 @@ async function scanRoute(routeInput: string, updateHistory: boolean): Promise<vo
   cancelCurrentUploadWatch();
   videoPlayer?.destroy();
   videoPlayer = null;
+  currentVideoDimensions = null;
   currentRoute = null;
   const controller = new AbortController();
   currentScanController = controller;
   input.value = routeInput.trim();
   if (updateHistory) {
-    window.history.pushState({}, "", buildRouteShareUrl(window.location.origin, import.meta.env.BASE_URL, routeInput));
+    window.history.pushState({}, "", withFaceRendererMode(buildRouteShareUrl(window.location.origin, import.meta.env.BASE_URL, routeInput)));
     shareButton.disabled = false;
   }
 
@@ -259,9 +264,10 @@ async function loadRoute(routeInput: string, updateHistory: boolean): Promise<vo
   viewer.hidden = true;
   videoPlayer?.destroy();
   videoPlayer = null;
+  currentVideoDimensions = null;
   input.value = routeInput.trim();
   if (updateHistory) {
-    window.history.pushState({}, "", buildRouteShareUrl(window.location.origin, import.meta.env.BASE_URL, routeInput));
+    window.history.pushState({}, "", withFaceRendererMode(buildRouteShareUrl(window.location.origin, import.meta.env.BASE_URL, routeInput)));
     shareButton.disabled = false;
   }
   try {
@@ -422,7 +428,16 @@ function renderViewer(route: DriverDebugRoute): void {
       <div class="route-meta"><span>${formatTime(route.startSeconds)}–${formatTime(route.endSeconds)}</span><span>${route.logSource} · ${formatHz(route.telemetryHz)}</span>${route.highResolutionRequested && route.logSource === "qlogs" ? "<span>rlog unavailable</span>" : ""}</div>
     </header>
     <p id="model-provenance" class="model-provenance">${escapeHtml(formatModelProvenance(initialProvenance, true))}</p>
-    <div class="video-shell">
+    <div class="face-renderer-control">
+      <label for="face-renderer">Face renderer compatibility</label>
+      <select id="face-renderer">
+        <option value="auto">Auto / newer pose-aware</option>
+        <option value="dm-0.10.3">openpilot 0.10.3 DM · position-only</option>
+        <option value="dm-0.11.1">openpilot 0.11.1+ DM · pose-aware</option>
+      </select>
+      <small>Forks can backport a different DM model; this override is included in shared URLs.</small>
+    </div>
+    <div id="video-shell" class="video-shell">
       <video id="driver-video" muted playsinline></video>
       <div class="model-input-frame" aria-hidden="true"></div>
       <div id="driver-box" class="face-box driver-box" role="button" tabindex="0" aria-label="Fade driver seat overlay" aria-pressed="false" title="Hover or tap to see the face" hidden><span>DRIVER SEAT</span></div>
@@ -477,6 +492,16 @@ function renderViewer(route: DriverDebugRoute): void {
 
   const video = byId<HTMLVideoElement>("driver-video");
   const scrubber = byId<HTMLInputElement>("route-scrubber");
+  const faceRenderer = byId<HTMLSelectElement>("face-renderer");
+  faceRenderer.value = faceRendererMode;
+  faceRenderer.addEventListener("change", () => {
+    faceRendererMode = parseFaceRendererMode(faceRenderer.value);
+    const url = new URL(window.location.href);
+    if (faceRendererMode === "auto") url.searchParams.delete(FACE_RENDERER_QUERY_PARAM);
+    else url.searchParams.set(FACE_RENDERER_QUERY_PARAM, faceRendererMode);
+    window.history.replaceState({}, "", url);
+    renderTelemetry(Number(scrubber.value));
+  });
   for (const id of ["driver-box", "other-box"]) {
     const box = byId<HTMLElement>(id);
     const togglePeek = () => {
@@ -568,6 +593,9 @@ async function loadVideo(route: DriverDebugRoute): Promise<void> {
   }
   const seekToStart = () => {
     if (videoPlayer !== player || currentRoute !== route) return;
+    currentVideoDimensions = { width: video.videoWidth, height: video.videoHeight };
+    byId<HTMLElement>("video-shell").style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
+    renderTelemetry(deepLinkedRouteTime(route));
     byId<HTMLButtonElement>("playback-toggle").disabled = false;
     byId<HTMLElement>("video-placeholder").hidden = true;
     setProgress("Driver Monitoring debugger ready", 1);
@@ -612,6 +640,12 @@ function resetRouteTimeUrlUpdates(): void {
   lastRouteTimeUpdate = Number.NEGATIVE_INFINITY;
 }
 
+function withFaceRendererMode(value: string): string {
+  const url = new URL(value);
+  if (faceRendererMode !== "auto") url.searchParams.set(FACE_RENDERER_QUERY_PARAM, faceRendererMode);
+  return url.toString();
+}
+
 function renderTelemetry(routeSeconds: number): void {
   const route = currentRoute;
   if (!route || viewer.hidden) return;
@@ -652,28 +686,29 @@ function renderTelemetry(routeSeconds: number): void {
     ["pitch off / calib", `${monitoring.pitchOffset.toFixed(3)} / ${monitoring.pitchCalibratedPercent}%`],
     ["yaw off / calib", `${monitoring.yawOffset.toFixed(3)} / ${monitoring.yawCalibratedPercent}%`],
   ]);
-  renderFaceBox("driver-box", selected, route.routeInfo?.deviceType ?? "");
-  renderFaceBox("other-box", other, route.routeInfo?.deviceType ?? "");
+  renderFaceBox("driver-box", selected, route);
+  renderFaceBox("other-box", other, route);
   renderHistory(routeSeconds, monitoring);
 }
 
-function renderFaceBox(id: string, driver: DriverModelData | null, deviceType: string): void {
+function renderFaceBox(id: string, driver: DriverModelData | null, route: DriverDebugRoute): void {
   const box = byId<HTMLElement>(id);
   if (!driver || driver.facePosition.length < 2 || driver.faceProb < 0.05) {
     box.hidden = true;
     return;
   }
-  const [faceX, faceY] = driver.facePosition;
-  const [pitch = 0, yaw = 0] = driver.faceOrientation;
-  const baseX = 1080 - 1714 * faceX;
-  const baseY = -135 + 504 + Math.abs(faceX) * 112 + (1205 - Math.abs(faceX) * 724) * faceY;
-  const scale = deviceType.toLowerCase() === "mici" ? 1.25 : 1;
-  const centerX = 100 - (((baseX - 1080) * scale + 1080) / 2160) * 100 + yaw * 4.5;
-  const centerY = (((baseY - 540) * scale + 540) / 1080) * 100 + pitch * 4;
+  const profile = resolveDriverCameraProfile(route.deviceType, currentVideoDimensions);
+  const anchor = projectFaceAnchor(driver.facePosition, profile, driver.faceOrientation, faceRendererMode);
+  if (!anchor) {
+    box.hidden = true;
+    return;
+  }
+  const [, yaw = 0] = driver.faceOrientation;
   const uncertainty = Math.max(...driver.faceOrientationStd.slice(0, 2), 0);
   const width = Math.min(18, Math.max(7, 8 + Math.abs(yaw) * 4 + uncertainty * 4));
-  box.style.left = `${Math.max(0, Math.min(100 - width, centerX - width / 2))}%`;
-  box.style.top = `${Math.max(0, Math.min(80, centerY - width * 0.58))}%`;
+  box.dataset.cameraProfile = profile.name;
+  box.style.left = `${Math.max(0, Math.min(100 - width, anchor.centerXPercent - width / 2))}%`;
+  box.style.top = `${Math.max(0, Math.min(80, anchor.centerYPercent - width * 0.58))}%`;
   box.style.width = `${width}%`;
   box.style.height = `${width * 1.16}%`;
   box.hidden = false;

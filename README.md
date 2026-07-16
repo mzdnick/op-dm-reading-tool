@@ -168,6 +168,8 @@ playback, so short Connect clip URLs are preferable to very long ranges.
   through the same-origin Pages Function to comma Athena and is not persisted.
 - Face boxes are coarse model-derived anchors, not face detections or privacy
   redaction.
+- Driver-camera and DM-model compatibility findings are documented in
+  [docs/driver-face-overlay-compatibility.md](docs/driver-face-overlay-compatibility.md).
 - This is diagnostic tooling, not a replacement for openpilot's safety checks.
 - Live route smoke tests can fail when external comma services are unavailable;
   they are kept separate from required offline tests.

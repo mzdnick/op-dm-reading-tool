@@ -62,7 +62,7 @@ describe("DM segment summaries", () => {
 });
 
 function fakeSegment(monitoringSamples: DriverMonitoringSample[]): DriverDebugSegment {
-  return { segment: 0, monitoring: monitoringSamples, models: [], vehicles: [], videoFrames: [] };
+  return { segment: 0, deviceType: null, monitoring: monitoringSamples, models: [], vehicles: [], videoFrames: [] };
 }
 
 function monitoring(

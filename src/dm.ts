@@ -1,4 +1,5 @@
 import {
+  findDeviceType,
   readBool,
   readEventEnvelope,
   readFloat32,
@@ -11,6 +12,7 @@ import {
   readUint32,
   readUint64Slot,
   type StructRef,
+  type DeviceType,
 } from "./capnp";
 
 export const EVENT_TAGS = {
@@ -103,6 +105,7 @@ export interface DriverVideoFrameIndex {
 
 export interface DriverDebugSegment {
   segment: number;
+  deviceType: DeviceType | null;
   monitoring: DriverMonitoringSample[];
   models: DriverModelSample[];
   vehicles: VehicleSample[];
@@ -160,6 +163,7 @@ export function decodeDriverDebugSegment(bytes: Uint8Array, segment: number): Dr
 
   return {
     segment,
+    deviceType: findDeviceType(bytes),
     monitoring,
     models,
     vehicles,

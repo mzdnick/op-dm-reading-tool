@@ -1,4 +1,5 @@
 import { decompressLog } from "./decompress";
+import type { DeviceType } from "./capnp";
 import { decodeDriverDebugSegment, type DriverDebugSegment, type DriverModelSample, type DriverMonitoringSample, type DriverVideoFrameIndex, type VehicleSample } from "./dm";
 import { fetchRouteFiles, fetchRouteInfo, logSourceLabel, orderedDcameraUrls, orderedLogUrls, parseRouteInput, segmentFromUrl, type RouteInfo } from "./routes";
 
@@ -14,6 +15,7 @@ export interface DriverDebugLoadOptions {
 export interface DriverDebugRoute {
   routeName: string;
   routeInfo: RouteInfo | null;
+  deviceType: DeviceType | null;
   startSeconds: number;
   endSeconds: number;
   logSource: "qlogs" | "rlogs";
@@ -93,6 +95,7 @@ export async function loadDriverDebugRoute(
   return {
     routeName: parsed.routeName,
     routeInfo,
+    deviceType: decoded.find((segment) => segment.deviceType)?.deviceType ?? null,
     startSeconds: parsed.startSeconds,
     endSeconds: parsed.endSeconds,
     logSource,

@@ -5,6 +5,7 @@ const commaJwt = process.env.COMMA_JWT;
 const liveTest = modernRoute && commaJwt ? test : test.skip;
 const routeBase = modernRoute?.replace(/\/\d+(?:\.\d+)?\/\d+(?:\.\d+)?\/?$/, "");
 const PUBLIC_MICI_ROUTE = "https://connect.comma.ai/5beb9b58bd12b691/0000010a--a51155e496";
+const FORKED_DM_MICI_ROUTE = "https://connect.comma.ai/f07115a587626e1a/00000525--989910eb06/240/300";
 const PUBLIC_MICI_STRESS_CLIPS = [
   { start: 247, end: 276, seek: 270 },
   { start: 355, end: 375, seek: 372 },
@@ -151,6 +152,12 @@ test("loads the public Mici demo from the route form", async ({ page }) => {
   await expect(driverBox).toBeVisible();
   await expect(page.locator("#route-clock")).toHaveText("7:26.0");
   await expect(page.locator("#model-values")).toContainText("87%");
+  const renderer = page.locator("#face-renderer");
+  await expect(renderer).toHaveValue("auto");
+  await renderer.selectOption("dm-0.10.3");
+  await expect(page).toHaveURL(/[?&]faceRenderer=dm-0\.10\.3(?:&|$)/);
+  await page.reload();
+  await expect(renderer).toHaveValue("dm-0.10.3");
   await expect(page.locator(".model-input-frame")).toHaveCSS("border-top-width", "2px");
   await expect.poll(() => page.locator(".model-input-frame").evaluate((element) => getComputedStyle(element, "::before").content)).toBe('"MODEL INPUT"');
   await expect(page.locator("#route-scrubber")).toHaveAttribute("style", /#e08546/);
@@ -182,4 +189,27 @@ test("loads the public Mici demo from the route form", async ({ page }) => {
   expect(telemetryCards[2].top).toBeGreaterThanOrEqual(telemetryCards[1].bottom);
   expect(telemetryCards[1].width).toBe(telemetryCards[0].width);
   await expect(page.locator("#model-values dd").first()).toHaveCSS("overflow-wrap", "normal");
+});
+
+test("compares 0.10.3 and 0.11.1+ face renderers on the forked DM route", async ({ page }) => {
+  await page.goto(`/?route=${encodeURIComponent(FORKED_DM_MICI_ROUTE)}&t=276`);
+  await expect(page.locator("#status-text")).toHaveText("Driver Monitoring debugger ready");
+  const box = page.locator("#driver-box");
+  const renderer = page.locator("#face-renderer");
+  const scrubber = page.locator("#route-scrubber");
+  await expect(box).toHaveAttribute("data-camera-profile", "mici");
+
+  await renderer.selectOption("dm-0.10.3");
+  const stockAt276 = await box.evaluate((element) => Number.parseFloat((element as HTMLElement).style.left));
+  await renderer.selectOption("dm-0.11.1");
+  const newerAt276 = await box.evaluate((element) => Number.parseFloat((element as HTMLElement).style.left));
+  expect(newerAt276).toBeLessThan(stockAt276);
+
+  await scrubber.fill("299");
+  await renderer.selectOption("dm-0.10.3");
+  const stockAt299 = await box.evaluate((element) => Number.parseFloat((element as HTMLElement).style.left));
+  await renderer.selectOption("dm-0.11.1");
+  const newerAt299 = await box.evaluate((element) => Number.parseFloat((element as HTMLElement).style.left));
+  expect(newerAt299).toBeGreaterThan(stockAt299);
+  await expect(page).toHaveURL(/[?&]faceRenderer=dm-0\.11\.1(?:&|$)/);
 });
