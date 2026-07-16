@@ -502,15 +502,16 @@ function renderViewer(route: DriverDebugRoute): void {
     queueRouteTimeUrlUpdate(routeSeconds);
   });
   playbackToggle.addEventListener("click", () => {
-    if (video.paused) void video.play();
-    else video.pause();
+    if (!videoPlayer) return;
+    if (video.paused) videoPlayer.play();
+    else videoPlayer.pause();
   });
   video.addEventListener("play", () => { playbackToggle.textContent = "Pause"; });
   video.addEventListener("pause", () => { playbackToggle.textContent = "Play"; });
   video.addEventListener("timeupdate", () => {
     if (!videoPlayer || !currentRoute) return;
     const routeSeconds = videoPlayer.playbackRouteStart + video.currentTime;
-    if (routeSeconds >= currentRoute.endSeconds) video.pause();
+    if (routeSeconds >= currentRoute.endSeconds) videoPlayer.pause();
     scrubber.value = String(Math.min(currentRoute.endSeconds, Math.max(currentRoute.startSeconds, routeSeconds)));
     renderTelemetry(routeSeconds);
     queueRouteTimeUrlUpdate(routeSeconds);

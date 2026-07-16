@@ -71,9 +71,25 @@ export class DriverVideoPlayer {
   private objectUrl: string | null = null;
   private pendingSeekTime: number | null = null;
   private resumeAfterSeek = false;
+  private playbackRequested = false;
   playbackRouteStart = 0;
 
   constructor(private readonly video: HTMLVideoElement) {}
+
+  play(): void {
+    this.playbackRequested = true;
+    void this.video.play().catch((error: unknown) => {
+      // A seek may need to pause while a browser is still resolving play().
+      // That rejection is expected and playback will resume after buffering.
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      console.error("Driver video playback failed.", error);
+    });
+  }
+
+  pause(): void {
+    this.playbackRequested = false;
+    this.video.pause();
+  }
 
   seek(routeSeconds: number): void {
     const target = Math.max(0, routeSeconds - this.playbackRouteStart);
@@ -82,7 +98,7 @@ export class DriverVideoPlayer {
       this.video.currentTime = target;
       return;
     }
-    this.resumeAfterSeek ||= !this.video.paused;
+    this.resumeAfterSeek ||= this.playbackRequested || !this.video.paused;
     this.video.pause();
     this.pendingSeekTime = target;
     this.video.dispatchEvent(new Event(VIDEO_DEMAND_EVENT));
@@ -238,7 +254,7 @@ export class DriverVideoPlayer {
   destroy(): void {
     this.abortController?.abort();
     this.abortController = null;
-    this.video.pause();
+    this.pause();
     this.video.removeAttribute("src");
     this.video.load();
     if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
@@ -255,7 +271,7 @@ export class DriverVideoPlayer {
     this.pendingSeekTime = null;
     this.resumeAfterSeek = false;
     this.video.currentTime = target;
-    if (shouldResume) void this.video.play();
+    if (shouldResume) this.play();
   }
 }
 
