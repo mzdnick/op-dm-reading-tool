@@ -2,6 +2,9 @@ import { createFile } from "mp4box";
 import type { DriverVideoFrameIndex } from "./dm";
 
 const MAX_RANGE_BYTES = 512 * 1024;
+// Some qlog frame indexes stop just before the final NAL reaches camera-file
+// EOF. The bounded tail request completes that last frame without fetching the file.
+const FINAL_FRAME_OVERFETCH_BYTES = 64 * 1024;
 const BUFFER_AHEAD_SECONDS = 20;
 const SEEK_BUFFER_CUSHION_SECONDS = 1;
 const VIDEO_DEMAND_EVENT = "driver-video-demand";
@@ -72,34 +75,54 @@ export class DriverVideoPlayer {
   private pendingSeekTime: number | null = null;
   private resumeAfterSeek = false;
   private playbackRequested = false;
+  private playAttempt: Promise<void> | null = null;
+  private scheduledPlay: number | null = null;
+  private playbackGeneration = 0;
   playbackRouteStart = 0;
 
   constructor(private readonly video: HTMLVideoElement) {}
 
+  get isPlaybackRequested(): boolean {
+    return this.playbackRequested;
+  }
+
+  togglePlayback(): boolean {
+    if (this.playbackRequested) this.pause();
+    else this.play();
+    return this.playbackRequested;
+  }
+
   play(): void {
     this.playbackRequested = true;
-    void this.video.play().catch((error: unknown) => {
-      // A seek may need to pause while a browser is still resolving play().
-      // That rejection is expected and playback will resume after buffering.
-      if (error instanceof DOMException && error.name === "AbortError") return;
-      console.error("Driver video playback failed.", error);
-    });
+    if (this.pendingSeekTime !== null) {
+      this.resumeAfterSeek = true;
+      if (isBuffered(this.video, this.pendingSeekTime, SEEK_BUFFER_CUSHION_SECONDS)) {
+        this.applyPendingSeek();
+        return;
+      }
+      this.video.dispatchEvent(new Event(VIDEO_DEMAND_EVENT));
+      return;
+    }
+    this.requestPlayback();
   }
 
   pause(): void {
     this.playbackRequested = false;
-    this.video.pause();
+    this.resumeAfterSeek = false;
+    this.suspendPlayback();
   }
 
   seek(routeSeconds: number): void {
     const target = Math.max(0, routeSeconds - this.playbackRouteStart);
     if (isBuffered(this.video, target, SEEK_BUFFER_CUSHION_SECONDS)) {
       this.pendingSeekTime = null;
+      this.resumeAfterSeek = false;
       this.video.currentTime = target;
       return;
     }
-    this.resumeAfterSeek ||= this.playbackRequested || !this.video.paused;
-    this.video.pause();
+    const shouldResume = this.playbackRequested || !this.video.paused;
+    this.suspendPlayback();
+    this.resumeAfterSeek = shouldResume;
     this.pendingSeekTime = target;
     this.video.dispatchEvent(new Event(VIDEO_DEMAND_EVENT));
   }
@@ -131,7 +154,8 @@ export class DriverVideoPlayer {
         ...source.frames,
         ...(lookahead ? [lookahead] : []),
       ];
-      return { source, ranges: planVideoRanges(downloadFrames) };
+      const ranges = planVideoRanges(downloadFrames);
+      return { source, ranges, overfetchFinalRange: !lookahead };
     });
     const signal = this.abortController.signal;
     const mediaSource = new MediaSource();
@@ -164,7 +188,11 @@ export class DriverVideoPlayer {
   }
 
   private async pumpFragments(
-    sourcePlans: Array<{ source: { url: string; frames: DriverVideoFrameIndex[] }; ranges: PlannedVideoRange[] }>,
+    sourcePlans: Array<{
+      source: { url: string; frames: DriverVideoFrameIndex[] };
+      ranges: PlannedVideoRange[];
+      overfetchFinalRange: boolean;
+    }>,
     sourceBuffer: SourceBuffer,
     onProgress: (message: string, fraction: number) => void,
     signal: AbortSignal,
@@ -179,8 +207,9 @@ export class DriverVideoPlayer {
     let sequence = 1;
     let initialized = false;
 
-    for (const { source, ranges } of sourcePlans) {
-      for (const range of ranges) {
+    for (const { source, ranges, overfetchFinalRange } of sourcePlans) {
+      for (let rangeIndex = 0; rangeIndex < ranges.length; rangeIndex += 1) {
+        const range = ranges[rangeIndex];
         const wantedFrames = range.frames.filter((frame) => selectedFrames.has(frameKey(frame)) && !appendedFrames.has(frameKey(frame)));
         if (wantedFrames.length > 0 && initialized) {
           const fragmentStart = wantedFrames[0].routeSeconds - this.playbackRouteStart;
@@ -191,7 +220,14 @@ export class DriverVideoPlayer {
             () => (this.pendingSeekTime ?? this.video.currentTime) + BUFFER_AHEAD_SECONDS,
           );
         }
-        const bytes = await fetchRange(source.url, range.start, range.end, signal);
+        const isFinalSourceRange = overfetchFinalRange && rangeIndex === ranges.length - 1;
+        const bytes = await fetchRange(
+          source.url,
+          range.start,
+          range.end + (isFinalSourceRange ? FINAL_FRAME_OVERFETCH_BYTES : 0),
+          signal,
+          isFinalSourceRange,
+        );
         completedRanges += 1;
         onProgress(`Buffering driver video (${completedRanges}/${totalRanges} chunks)`, completedRanges / totalRanges);
         const streamNalus = splitAnnexB(bytes);
@@ -218,7 +254,7 @@ export class DriverVideoPlayer {
           const stream = mp4.getBuffer();
           const init = new Uint8Array(stream.buffer.slice(0, stream.byteLength));
           patchHvcCReservedBits(init);
-          await appendToSourceBuffer(sourceBuffer, init, signal);
+          await appendToSourceBuffer(this.video, sourceBuffer, init, signal);
           initialized = true;
         }
         const accessUnits = groupAccessUnits(streamNalus);
@@ -241,7 +277,7 @@ export class DriverVideoPlayer {
           const fragment = makeFragment(trackId, sequence, decodeTime, samples);
           sequence += 1;
           decodeTime += samples.reduce((sum, sample) => sum + sample.duration, 0);
-          await appendToSourceBuffer(sourceBuffer, fragment, signal);
+          await appendToSourceBuffer(this.video, sourceBuffer, fragment, signal);
           this.applyPendingSeek();
           onFirstFragment();
         }
@@ -271,7 +307,63 @@ export class DriverVideoPlayer {
     this.pendingSeekTime = null;
     this.resumeAfterSeek = false;
     this.video.currentTime = target;
-    if (shouldResume) this.play();
+    if (shouldResume && this.playbackRequested) this.requestPlayback();
+  }
+
+  private requestPlayback(): void {
+    if (
+      !this.playbackRequested
+      || this.pendingSeekTime !== null
+      || this.playAttempt
+      || this.scheduledPlay !== null
+      || !this.video.paused
+      || this.video.error
+    ) return;
+    const generation = this.playbackGeneration;
+    // Coalesce back-to-back UI commands before touching the media element.
+    this.scheduledPlay = window.setTimeout(() => {
+      this.scheduledPlay = null;
+      if (generation === this.playbackGeneration) this.startPlayback();
+    }, 0);
+  }
+
+  private startPlayback(): void {
+    if (!this.playbackRequested || this.playAttempt || !this.video.paused || this.video.error) return;
+    const generation = this.playbackGeneration;
+    let attempt: Promise<void>;
+    try {
+      attempt = this.video.play();
+    } catch (error) {
+      console.error("Driver video playback failed.", error);
+      return;
+    }
+    this.playAttempt = attempt;
+    void attempt.then(
+      () => this.finishPlayAttempt(attempt, generation, true),
+      (error: unknown) => {
+        const interrupted = error instanceof DOMException && error.name === "AbortError";
+        if (!interrupted) console.error("Driver video playback failed.", error);
+        this.finishPlayAttempt(attempt, generation, interrupted);
+      },
+    );
+  }
+
+  private finishPlayAttempt(attempt: Promise<void>, generation: number, mayRetry: boolean): void {
+    if (generation !== this.playbackGeneration || this.playAttempt !== attempt) return;
+    this.playAttempt = null;
+    if (!this.playbackRequested) {
+      if (!this.video.paused) this.video.pause();
+      return;
+    }
+    if (mayRetry && this.video.paused && !this.video.error) this.requestPlayback();
+  }
+
+  private suspendPlayback(): void {
+    this.playbackGeneration += 1;
+    this.playAttempt = null;
+    if (this.scheduledPlay !== null) window.clearTimeout(this.scheduledPlay);
+    this.scheduledPlay = null;
+    if (!this.video.paused) this.video.pause();
   }
 }
 
@@ -301,9 +393,8 @@ export function splitAnnexB(bytes: Uint8Array): Nalu[] {
 function buildHevcConfig(nalus: Nalu[]): { record: Uint8Array<ArrayBuffer>; sps: Uint8Array<ArrayBuffer> } {
   const vps = nalus.find((nalu) => nalu.type === 32)?.data;
   const sps = nalus.find((nalu) => nalu.type === 33)?.data;
-  const rawPps = nalus.find((nalu) => nalu.type === 34)?.data;
-  if (!vps || !sps || !rawPps || sps.length < 15) throw new Error("The first keyframe is missing HEVC VPS/SPS/PPS configuration.");
-  const pps = rawPps.at(-1) === 0 ? rawPps : concatBytes(rawPps, new Uint8Array([0]));
+  const pps = nalus.find((nalu) => nalu.type === 34)?.data;
+  if (!vps || !sps || !pps || sps.length < 15) throw new Error("The first keyframe is missing HEVC VPS/SPS/PPS configuration.");
   const profile = removeEmulationPrevention(sps.slice(2));
   const header = new Uint8Array([
     1, profile[1], ...profile.slice(2, 6), ...profile.slice(6, 12), profile[12],
@@ -473,26 +564,43 @@ function waitForMediaSourceOpen(mediaSource: MediaSource, signal: AbortSignal): 
   });
 }
 
-function appendToSourceBuffer(sourceBuffer: SourceBuffer, bytes: Uint8Array<ArrayBuffer>, signal: AbortSignal): Promise<void> {
+function appendToSourceBuffer(
+  video: HTMLVideoElement,
+  sourceBuffer: SourceBuffer,
+  bytes: Uint8Array<ArrayBuffer>,
+  signal: AbortSignal,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const cleanup = () => {
       sourceBuffer.removeEventListener("updateend", onUpdateEnd);
       sourceBuffer.removeEventListener("error", onError);
+      video.removeEventListener("error", onMediaError);
       signal.removeEventListener("abort", onAbort);
     };
     const onUpdateEnd = () => { cleanup(); resolve(); };
     const onError = () => { cleanup(); reject(new Error("The browser rejected a remuxed video fragment.")); };
+    const onMediaError = () => { cleanup(); reject(describeMediaError(video.error)); };
     const onAbort = () => { cleanup(); reject(new DOMException("Video loading aborted", "AbortError")); };
     sourceBuffer.addEventListener("updateend", onUpdateEnd, { once: true });
     sourceBuffer.addEventListener("error", onError, { once: true });
+    video.addEventListener("error", onMediaError, { once: true });
     signal.addEventListener("abort", onAbort, { once: true });
     try {
+      if (video.error) {
+        onMediaError();
+        return;
+      }
       sourceBuffer.appendBuffer(bytes);
     } catch (error) {
       cleanup();
       reject(error);
     }
   });
+}
+
+function describeMediaError(error: MediaError | null): Error {
+  const detail = error?.message.trim();
+  return new Error(detail ? `Driver video playback failed: ${detail}` : "Driver video playback failed.");
 }
 
 async function waitForPlaybackDemand(
@@ -507,14 +615,17 @@ async function waitForPlaybackDemand(
         video.removeEventListener("timeupdate", onDemand);
         video.removeEventListener("seeking", onDemand);
         video.removeEventListener("play", onDemand);
+        video.removeEventListener("error", onMediaError);
         video.removeEventListener(VIDEO_DEMAND_EVENT, onDemand);
         signal.removeEventListener("abort", onAbort);
       };
       const onDemand = () => { cleanup(); resolve(); };
+      const onMediaError = () => { cleanup(); reject(describeMediaError(video.error)); };
       const onAbort = () => { cleanup(); reject(new DOMException("Video loading aborted", "AbortError")); };
       video.addEventListener("timeupdate", onDemand, { once: true });
       video.addEventListener("seeking", onDemand, { once: true });
       video.addEventListener("play", onDemand, { once: true });
+      video.addEventListener("error", onMediaError, { once: true });
       video.addEventListener(VIDEO_DEMAND_EVENT, onDemand, { once: true });
       signal.addEventListener("abort", onAbort, { once: true });
     });
@@ -546,13 +657,25 @@ function uint64(value: bigint): Uint8Array<ArrayBuffer> {
   return concatBytes(uint32(Number((value >> 32n) & 0xffffffffn)), uint32(Number(value & 0xffffffffn)));
 }
 
-async function fetchRange(url: string, start: number, end: number, signal: AbortSignal): Promise<Uint8Array> {
+async function fetchRange(
+  url: string,
+  start: number,
+  end: number,
+  signal: AbortSignal,
+  allowShort = false,
+): Promise<Uint8Array> {
   const response = await fetch(url, { headers: { Range: `bytes=${start}-${end}` }, signal });
   if (!response.ok) throw new Error(`Could not fetch driver video bytes (${response.status}).`);
   const bytes = new Uint8Array(await response.arrayBuffer());
   const expected = end - start + 1;
-  if (response.status === 200 && bytes.byteLength >= end + 1) return bytes.slice(start, end + 1);
-  if (bytes.byteLength < expected) throw new Error(`Driver video range was truncated (${bytes.byteLength}/${expected} bytes).`);
+  if (response.status === 200 && bytes.byteLength > start) {
+    const fullFileRange = bytes.slice(start, Math.min(end + 1, bytes.byteLength));
+    if (!allowShort && fullFileRange.byteLength < expected) {
+      throw new Error(`Driver video range was truncated (${fullFileRange.byteLength}/${expected} bytes).`);
+    }
+    return fullFileRange;
+  }
+  if (!allowShort && bytes.byteLength < expected) throw new Error(`Driver video range was truncated (${bytes.byteLength}/${expected} bytes).`);
   return bytes.subarray(0, expected);
 }
 

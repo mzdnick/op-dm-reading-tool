@@ -5,6 +5,7 @@ const commaJwt = process.env.COMMA_JWT;
 const liveTest = modernRoute && commaJwt ? test : test.skip;
 const routeBase = modernRoute?.replace(/\/\d+(?:\.\d+)?\/\d+(?:\.\d+)?\/?$/, "");
 const PUBLIC_MICI_ROUTE = "https://connect.comma.ai/5beb9b58bd12b691/0000010a--a51155e496";
+const RAPID_TOGGLE_ROUTE = "https://connect.comma.ai/fde53c3c109fb4c0/00000054--1970f8dd0a/1737/1834";
 const PUBLIC_MICI_STRESS_CLIPS = [
   { start: 247, end: 276, seek: 270 },
   { start: 355, end: 375, seek: 372 },
@@ -28,7 +29,16 @@ liveTest("remuxes and plays the private modern driver-camera clip", async ({ pag
   await expect(video).toHaveJSProperty("controls", false);
   await expect(page.locator("#playback-toggle")).toBeEnabled();
   await expect(page.locator("#awareness")).toContainText("%");
-  await expect(page.locator("#driver-box")).toBeVisible();
+  const driverBox = page.locator("#driver-box");
+  await expect(driverBox).toBeVisible();
+  await expect(driverBox).toHaveAttribute("data-camera-profile", "tici");
+  const faceBoxGeometry = await driverBox.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const shell = element.parentElement!.getBoundingClientRect();
+    return { width: box.width, height: box.height, widthRatio: box.width / shell.width };
+  });
+  expect(Math.abs(faceBoxGeometry.width - faceBoxGeometry.height)).toBeLessThan(1);
+  expect(faceBoxGeometry.widthRatio).toBeCloseTo(220 / 2160, 3);
 
   await page.locator("#playback-toggle").click();
   await expect(page.locator("#playback-toggle")).toHaveText("Pause");
@@ -114,6 +124,36 @@ test("opens and advances a route-time deep link", async ({ page }) => {
   await expect.poll(() => Number(new URL(page.url()).searchParams.get("t"))).toBeGreaterThan(270);
 });
 
+test("keeps playback usable after rapid pause and play toggles", async ({ page }) => {
+  test.setTimeout(120_000);
+  const consoleErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  await page.goto(`/?route=${encodeURIComponent(RAPID_TOGGLE_ROUTE)}&t=1739`);
+  await expect(page.locator("#status-text")).toHaveText("Driver Monitoring debugger ready");
+  const video = page.locator("#driver-video");
+  const toggle = page.locator("#playback-toggle");
+  await expect(video).toHaveJSProperty("readyState", 4);
+
+  await page.evaluate(async () => {
+    const button = document.querySelector<HTMLButtonElement>("#playback-toggle")!;
+    for (let index = 0; index < 30; index += 1) {
+      button.click();
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    }
+  });
+  await expect(toggle).toHaveText("Play");
+  await expect(video).toHaveJSProperty("paused", true);
+  await expect(video).toHaveJSProperty("error", null);
+
+  const beforePlay = await video.evaluate((element: HTMLVideoElement) => element.currentTime);
+  await toggle.click();
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime)).toBeGreaterThan(beforePlay + 0.5);
+  await expect(video).toHaveJSProperty("error", null);
+  expect(consoleErrors.filter((message) => message.includes("appendBuffer") || message.includes("HTMLMediaElement.error"))).toEqual([]);
+});
+
 test("keeps the submitted route in the address bar while driver video is missing", async ({ page }) => {
   const clip = `${PUBLIC_MICI_ROUTE}/247/276`;
   await page.route("https://api.comma.ai/v1/route/**", async (route) => {
@@ -149,6 +189,14 @@ test("loads the public Mici demo from the route form", async ({ page }) => {
   await expect(page.locator("#status-text")).toHaveText("Driver Monitoring debugger ready");
   const driverBox = page.locator("#driver-box");
   await expect(driverBox).toBeVisible();
+  await expect(driverBox).toHaveAttribute("data-camera-profile", "mici");
+  const faceBoxGeometry = await driverBox.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const shell = element.parentElement!.getBoundingClientRect();
+    return { width: box.width, height: box.height, widthRatio: box.width / shell.width };
+  });
+  expect(Math.abs(faceBoxGeometry.width - faceBoxGeometry.height)).toBeLessThan(1);
+  expect(faceBoxGeometry.widthRatio).toBeCloseTo(75 / 536, 3);
   await expect(page.locator("#route-clock")).toHaveText("7:26.0");
   await expect(page.locator("#model-values")).toContainText("87%");
   await expect(page.locator(".model-input-frame")).toHaveCSS("border-top-width", "2px");
