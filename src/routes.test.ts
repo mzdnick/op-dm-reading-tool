@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetBackendForTesting } from "./backend";
 import { logSourceLabel, orderedLogUrls, parseRouteInput, segmentFromUrl } from "./routes";
 import { buildAuthCallbackCleanUrl, buildRouteShareUrl, buildRouteTimeUrl, routeInputFromUrl, routeTimeFromUrl } from "./routeInput";
 
@@ -99,5 +100,56 @@ describe("route parsing", () => {
         "/op-dm-reading-tool/",
       ),
     ).toBe("https://example.test/op-dm-reading-tool/?route=5beb9b58bd12b691%7C0000010a--a51155e496&t=270");
+  });
+});
+
+describe("clone frontend URL parsing", () => {
+  beforeEach(() => {
+    resetBackendForTesting();
+    vi.stubGlobal("window", {
+      location: {
+        href: "https://opdm.example.com/?backend=konik",
+        origin: "https://opdm.example.com",
+        protocol: "https:",
+        host: "opdm.example.com",
+        hostname: "opdm.example.com",
+        search: "?backend=konik",
+      },
+    });
+  });
+
+  afterEach(() => {
+    resetBackendForTesting();
+    vi.unstubAllGlobals();
+  });
+
+  it("accepts Konik Stable clip URLs when the konik backend is active", () => {
+    expect(parseRouteInput("https://stable.konik.ai/5beb9b58bd12b691/0000010a--a51155e496")).toMatchObject({
+      routeName: "5beb9b58bd12b691|0000010a--a51155e496",
+      dongleId: "5beb9b58bd12b691",
+      source: "connect-url",
+    });
+  });
+
+  it("preserves clip times from Konik Stable URLs", () => {
+    expect(parseRouteInput("https://stable.konik.ai/5beb9b58bd12b691/0000010a--a51155e496/90/105")).toMatchObject({
+      startSeconds: 90,
+      endSeconds: 105,
+      explicitClipRange: true,
+    });
+  });
+
+  it("still accepts comma Connect URLs even when a clone backend is active", () => {
+    expect(parseRouteInput("https://connect.comma.ai/5beb9b58bd12b691/0000010a--a51155e496")).toMatchObject({
+      source: "connect-url",
+      dongleId: "5beb9b58bd12b691",
+    });
+  });
+
+  it("still accepts bare route names when a clone backend is active", () => {
+    expect(parseRouteInput("5beb9b58bd12b691|0000010a--a51155e496")).toMatchObject({
+      dongleId: "5beb9b58bd12b691",
+      source: "route",
+    });
   });
 });

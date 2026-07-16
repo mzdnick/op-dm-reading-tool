@@ -1,3 +1,4 @@
+import { getBackend } from "./backend";
 import { API_BASE_URL } from "./constants";
 import { buildAuthCallbackCleanUrl } from "./routeInput";
 
@@ -60,7 +61,7 @@ export async function checkAccessToken(): Promise<AuthCheckResult> {
     if (response.status === 401 || response.status === 403) {
       return { status: "invalid", httpStatus: response.status };
     }
-    return { status: "error", message: `comma auth check failed (${response.status}).` };
+    return { status: "error", message: `${getBackend().label} auth check failed (${response.status}).` };
   } catch (error) {
     return {
       status: "error",
@@ -72,12 +73,17 @@ export async function checkAccessToken(): Promise<AuthCheckResult> {
 export function getOAuthProviders(): OAuthProvider[] {
   const service = getOAuthService();
   if (!service || !canUseOAuthRedirect(service)) return [];
+  const backend = getBackend();
+  // OAuth buttons only appear for backends that advertise OAuth client ids
+  // (comma). Clone backends authenticate by pasting a JWT instead.
+  if (backend.authMethod !== "oauth" || !backend.oauth) return [];
+  const oauth = backend.oauth;
   return [
     {
       label: "Google",
       url: oauthUrl("https://accounts.google.com/o/oauth2/auth", {
         type: "web_server",
-        client_id: "45471411055-ornt4svd2miog6dnopve7qtmh5mnu6id.apps.googleusercontent.com",
+        client_id: oauth.googleClientId,
         redirect_uri: `${API_BASE_URL}/v2/auth/g/redirect/`,
         response_type: "code",
         scope: "https://www.googleapis.com/auth/userinfo.email",
@@ -88,7 +94,7 @@ export function getOAuthProviders(): OAuthProvider[] {
     {
       label: "GitHub",
       url: oauthUrl("https://github.com/login/oauth/authorize", {
-        client_id: "28c4ecb54bb7272cb5a4",
+        client_id: oauth.githubClientId,
         redirect_uri: `${API_BASE_URL}/v2/auth/h/redirect/`,
         scope: "read:user",
         state: `service,${service}`,
@@ -97,7 +103,7 @@ export function getOAuthProviders(): OAuthProvider[] {
     {
       label: "Apple",
       url: oauthUrl("https://appleid.apple.com/auth/authorize", {
-        client_id: "ai.comma.login",
+        client_id: oauth.appleClientId,
         redirect_uri: `${API_BASE_URL}/v2/auth/a/redirect/`,
         response_type: "code",
         response_mode: "form_post",
@@ -146,12 +152,12 @@ async function refreshAccessToken(code: string, provider: string): Promise<void>
   });
 
   if (!response.ok) {
-    throw new Error(`Could not exchange comma OAuth code (${response.status}).`);
+    throw new Error(`Could not exchange ${getBackend().label} OAuth code (${response.status}).`);
   }
 
   const json = (await response.json()) as { access_token?: string };
   if (!json.access_token) {
-    throw new Error("comma OAuth response did not include an access token.");
+    throw new Error(`${getBackend().label} OAuth response did not include an access token.`);
   }
   setAccessToken(json.access_token);
 }
@@ -165,7 +171,12 @@ function getOAuthService(): string | null {
 
 function canUseOAuthRedirect(service: string): boolean {
   const hostname = service.split(":", 1)[0];
-  return LOCAL_OAUTH_HOSTNAMES.has(hostname) || hostname === "connect.comma.ai" || hostname.endsWith(".connect-d5y.pages.dev");
+  if (LOCAL_OAUTH_HOSTNAMES.has(hostname)) return true;
+  if (hostname === "connect.comma.ai" || hostname.endsWith(".connect-d5y.pages.dev")) return true;
+  // Also allow OAuth on a deployment whose origin matches the active backend's
+  // own connect-style frontend (e.g. a fork served from connect.comma.ai).
+  const backendFrontendHost = hostOf(getBackend().connectFrontendUrl);
+  return !!backendFrontendHost && hostname === backendFrontendHost;
 }
 
 function normalizeAccessToken(token: string | null): string | null {
@@ -188,6 +199,14 @@ function getStorage(): Pick<Storage, "getItem" | "setItem" | "removeItem"> | nul
 
 function oauthUrl(baseUrl: string, params: Record<string, string>): string {
   return `${baseUrl}?${new URLSearchParams(params).toString()}`;
+}
+
+function hostOf(origin: string): string {
+  try {
+    return new URL(origin).hostname;
+  } catch {
+    return "";
+  }
 }
 
 function removeAuthParamsFromUrl(): void {

@@ -48,7 +48,7 @@ describe("Athena upload proxy", () => {
     const response = await proxyAthenaRequest(uploadRequest(), DONGLE_ID, fetcher);
 
     expect(response.status).toBe(502);
-    expect(await response.json()).toEqual({ error: "Could not reach comma Athena." });
+    expect(await response.json()).toEqual({ error: "Could not reach Comma Connect Athena." });
   });
 
   it("returns only requested queue progress without signed URLs", async () => {

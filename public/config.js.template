@@ -1,0 +1,7 @@
+/*
+ * Template for public/config.js. Copy this file to public/config.js (it ships
+ * with a comma default) and edit it to point the app at a different backend.
+ *
+ * See the README's "Backends" section for details.
+ */
+window.OPDM_BACKEND = { backend: "comma" };

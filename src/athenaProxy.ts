@@ -1,8 +1,11 @@
-const ATHENA_BASE_URL = "https://athena.comma.ai";
+import { findBackend, DEFAULT_BACKEND_ID } from "./backends/registry";
+
 const MAX_REQUEST_BYTES = 256 * 1024;
 const MAX_UPLOAD_FILES = 32;
 const DONGLE_ID_PATTERN = /^[a-f0-9]{16}$/i;
 const DRIVER_VIDEO_PATH_PATTERN = /^[a-z0-9_-]+--\d+\/dcamera\.hevc$/i;
+/** Header the client sends to tell the relay which backend to forward to. */
+const BACKEND_HEADER = "X-Opdm-Backend";
 
 type AllowedAthenaRequest =
   | { kind: "upload"; outbound: Record<string, unknown> }
@@ -24,6 +27,16 @@ export async function proxyAthenaRequest(
   if (!authorization || !/^JWT\s+\S+$/i.test(authorization)) {
     return jsonResponse({ error: "A comma JWT is required." }, 401);
   }
+
+  // Resolve the Athena target from the backend id the client sent. Unknown ids
+  // (including a "?api=" custom host, which the relay cannot resolve to a known
+  // Athena URL) are rejected so the relay never forwards to an arbitrary host.
+  const backendId = request.headers.get(BACKEND_HEADER) ?? DEFAULT_BACKEND_ID;
+  const backend = findBackend(backendId);
+  if (!backend) {
+    return jsonResponse({ error: "Unknown backend." }, 400);
+  }
+  const athenaBaseUrl = backend.athenaBaseUrl;
 
   const contentLength = Number(request.headers.get("Content-Length") ?? 0);
   if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BYTES) {
@@ -47,7 +60,7 @@ export async function proxyAthenaRequest(
   }
 
   try {
-    const response = await fetcher(`${ATHENA_BASE_URL}/${dongleId}`, {
+    const response = await fetcher(`${athenaBaseUrl}/${dongleId}`, {
       method: "POST",
       headers: {
         Authorization: authorization,
@@ -66,7 +79,7 @@ export async function proxyAthenaRequest(
       headers: responseHeaders(response.headers.get("Content-Type")),
     });
   } catch {
-    return jsonResponse({ error: "Could not reach comma Athena." }, 502);
+    return jsonResponse({ error: `Could not reach ${backend.label} Athena.` }, 502);
   }
 }
 

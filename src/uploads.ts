@@ -1,10 +1,13 @@
-import { authHeaders } from "./auth";
+import { authHeaders, getAccessToken } from "./auth";
+import { getBackend } from "./backend";
 import { API_BASE_URL } from "./constants";
 import { parseRouteInput } from "./routeInput";
 import { segmentFromUrl, type RouteFiles } from "./routes";
 
 const ATHENA_PROXY_BASE_URL = "/api/athena";
 const UPLOAD_EXPIRY_SECONDS = 7 * 24 * 60 * 60;
+/** Header carrying the active backend id so the relay knows where to forward. */
+const BACKEND_HEADER = "X-Opdm-Backend";
 
 export interface DriverVideoUploadRequest {
   dongleId: string;
@@ -72,7 +75,10 @@ export async function queueDriverVideoUpload(
       files_data: request.paths.map((path, index) => ({
         fn: path,
         url: uploadUrls[index].url,
-        headers: { "x-ms-blob-type": "BlockBlob" },
+        // Comma returns Azure Blob PUT URLs (x-ms-blob-type: BlockBlob). Clones
+        // like Konik serve their own /connectincoming endpoints and authenticate
+        // uploads with the signed-in JWT instead.
+        headers: uploadFileHeaders(),
         allow_cellular: false,
         priority: 0,
       })),
@@ -83,7 +89,7 @@ export async function queueDriverVideoUpload(
   try {
     athenaResponse = await fetcher(`${ATHENA_PROXY_BASE_URL}/${request.dongleId}`, {
       method: "POST",
-      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      headers: { ...authHeaders(), "Content-Type": "application/json", [BACKEND_HEADER]: getBackend().id },
       body: JSON.stringify(payload),
     });
   } catch {
@@ -177,7 +183,7 @@ export async function watchDriverVideoUpload(
 async function fetchUploadQueue(request: DriverVideoUploadRequest, fetcher: typeof fetch): Promise<AthenaResponse | null> {
   const response = await fetcher(`${ATHENA_PROXY_BASE_URL}/${request.dongleId}`, {
     method: "POST",
-    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    headers: { ...authHeaders(), "Content-Type": "application/json", [BACKEND_HEADER]: getBackend().id },
     body: JSON.stringify({
       id: 0,
       jsonrpc: "2.0",
@@ -228,4 +234,16 @@ function abortablePause(milliseconds: number, signal: AbortSignal): Promise<void
     };
     signal.addEventListener("abort", onAbort, { once: true });
   });
+}
+
+/**
+ * Builds the per-file upload headers for the active backend. Comma uploads to
+ * Azure Blob Storage (`x-ms-blob-type: BlockBlob`); clones authenticate device
+ * uploads with the signed-in JWT. The `{jwt}` placeholder is substituted with
+ * the current access token, falling back to an empty string when signed out.
+ */
+function uploadFileHeaders(): Record<string, string> {
+  const { header, value } = getBackend().uploadAuth;
+  const resolved = value.replace("{jwt}", getAccessToken() ?? "");
+  return { [header]: resolved };
 }

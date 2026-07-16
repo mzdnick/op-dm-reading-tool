@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetBackendForTesting } from "./backend";
 import { authHeaders, checkAccessToken, completeAuthCallback, getAccessToken, getOAuthProviders, oauthRedirectNote, setAccessToken, signOut } from "./auth";
 
 describe("comma auth token storage", () => {
@@ -6,12 +7,17 @@ describe("comma auth token storage", () => {
 
   beforeEach(() => {
     vi.unstubAllGlobals();
+    resetBackendForTesting();
     storage.clear();
     vi.stubGlobal("localStorage", {
       getItem: vi.fn((key: string) => storage.get(key) ?? null),
       setItem: vi.fn((key: string, value: string) => storage.set(key, value)),
       removeItem: vi.fn((key: string) => storage.delete(key)),
     });
+  });
+
+  afterEach(() => {
+    resetBackendForTesting();
   });
 
   it("stores comma JWTs without a duplicated JWT prefix", () => {
@@ -52,7 +58,7 @@ describe("comma auth token storage", () => {
     await expect(checkAccessToken()).resolves.toEqual({ status: "invalid", httpStatus: 401 });
 
     vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 503 })));
-    await expect(checkAccessToken()).resolves.toEqual({ status: "error", message: "comma auth check failed (503)." });
+    await expect(checkAccessToken()).resolves.toEqual({ status: "error", message: "Comma Connect auth check failed (503)." });
   });
 
   it("does not call comma when no JWT is stored", async () => {
@@ -146,3 +152,49 @@ describe("comma auth token storage", () => {
     expect(replaceState).toHaveBeenCalledWith({}, "", "https://example.test/?route=5beb9b58bd12b691%7C0000010a--a51155e496");
   });
 });
+
+describe("clone backend auth", () => {
+  const storage = new Map<string, string>();
+
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+    resetBackendForTesting();
+    storage.clear();
+    vi.stubGlobal("localStorage", {
+      getItem: vi.fn((key: string) => storage.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => storage.set(key, value)),
+      removeItem: vi.fn((key: string) => storage.delete(key)),
+    });
+  });
+
+  afterEach(() => {
+    resetBackendForTesting();
+  });
+
+  it("never offers OAuth for a jwt-mode clone even on an allowed host", () => {
+    // Point the active backend at konik, and deploy this tool on konik's own
+    // frontend host (so the origin allowlist would otherwise pass).
+    stubWindow("https://stable.konik.ai/?backend=konik");
+
+    expect(getOAuthProviders()).toEqual([]);
+  });
+
+  it("offers OAuth for comma even on a connect.comma.ai deploy", () => {
+    stubWindow("https://connect.comma.ai/");
+    expect(getOAuthProviders()).toHaveLength(3);
+  });
+});
+
+function stubWindow(href: string): void {
+  const url = new URL(href);
+  vi.stubGlobal("window", {
+    location: {
+      href,
+      origin: url.origin,
+      protocol: url.protocol,
+      host: url.host,
+      hostname: url.hostname,
+      search: url.search,
+    },
+  });
+}

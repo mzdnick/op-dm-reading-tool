@@ -1,4 +1,5 @@
 import "./styles.css";
+import { getBackend } from "./backend";
 import { checkAccessToken, completeAuthCallback, isSignedIn, setAccessToken, signOut, type AuthCheckResult } from "./auth";
 import { loadDriverDebugRoute, MissingDriverVideoError, type DriverDebugRoute } from "./debugger";
 import { sampleAt, selectDriver, type DriverModelData, type DriverMonitoringSample } from "./dm";
@@ -17,15 +18,19 @@ const PUBLIC_MICI_DEMO_TIME = 446;
 const app = document.querySelector<HTMLDivElement>("#app");
 if (!app) throw new Error("Missing app element");
 
+// Resolve the active backend once so the UI template and badge reflect it.
+const activeBackend = getBackend();
+
 app.innerHTML = `
   <section class="tool-shell">
     <header class="masthead">
       <h1>Driver Monitoring debugger</h1>
+      <p class="backend-badge" id="backend-badge" title="Active backend — change via ?backend= or config.js"></p>
     </header>
     <form class="reader-form" id="reader-form">
-      <label for="route-input">comma Connect route or clip URL</label>
+      <label for="route-input">${escapeHtml(activeBackend.label)} route or clip URL</label>
       <div class="input-row">
-        <input id="route-input" autocomplete="off" spellcheck="false" placeholder="https://connect.comma.ai/&lt;dongle&gt;/&lt;route&gt;/&lt;start&gt;/&lt;end&gt;" />
+        <input id="route-input" autocomplete="off" spellcheck="false" placeholder="${connectFrontendHost()}/&lt;dongle&gt;/&lt;route&gt;/&lt;start&gt;/&lt;end&gt;" />
         <button id="load-button" type="submit">Scan or load</button>
         <button id="demo-button" class="secondary" type="button" title="Open a public Mici clip at an 87% phone-model peak">Try demo</button>
         <button id="share-button" class="secondary" type="button" disabled>Share</button>
@@ -139,6 +144,15 @@ const support = detectHevcSupport();
 byId<HTMLElement>("codec-summary").textContent = support.supported
   ? `Native HEVC is available (${support.codec}).`
   : "Native HEVC/MSE is unavailable in this browser. Video will be disabled.";
+
+// Surface the active backend so users know which service they're talking to.
+// Comma is the default and shown subtly; non-default backends are emphasized.
+const backendBadge = byId<HTMLElement>("backend-badge");
+backendBadge.textContent = `${activeBackend.label} · ${new URL(activeBackend.apiBaseUrl).hostname}`;
+backendBadge.classList.toggle("backend-badge--custom", activeBackend.id !== "comma");
+// The bundled demo route lives on comma's servers, so hide the button for
+// clones where it would fail to load.
+if (activeBackend.id !== "comma") demoButton.hidden = true;
 
 let currentRoute: DriverDebugRoute | null = null;
 let videoPlayer: DriverVideoPlayer | null = null;
@@ -381,7 +395,7 @@ function renderUploadProgress(message: string, progress?: number, error = false)
 
 function renderRouteScan(update: RouteScanUpdate): void {
   viewer.hidden = false;
-  const routeBase = `https://connect.comma.ai/${update.dongleId}/${update.routeId}`;
+  const routeBase = `${getBackend().connectFrontendUrl}/${update.dongleId}/${update.routeId}`;
   const rows = update.findings.map((finding) => scanFindingRow(finding, routeBase)).join("");
   const empty = update.phase === "complete"
     ? `<p class="scan-empty">No DM alerts or unusual signals were found.</p>`
@@ -880,31 +894,53 @@ function manualNeutralSummary(driver: DriverModelData | null): string {
 }
 
 function renderAuthPanel(): void {
+  const backend = getBackend();
   if (!isSignedIn()) {
-    const warning = authCheck.status === "invalid" ? `<p class="auth-status invalid">comma rejected that JWT, so it was not saved.</p>` : "";
+    const warning = authCheck.status === "invalid" ? `<p class="auth-status invalid">${escapeHtml(backend.label)} rejected that JWT, so it was not saved.</p>` : "";
+    const tokenLink = backend.tokenHelpUrl
+      ? `<a href="${escapeHtml(backend.tokenHelpUrl)}" target="_blank" rel="noreferrer">${escapeHtml(tokenHostLabel(backend.tokenHelpUrl))}</a>`
+      : "your device's useradmin page";
     authPanel.innerHTML = `<section class="auth-prompt" aria-labelledby="auth-heading">
       <strong id="auth-heading">Private route or missing driver video?</strong>
       <div class="auth-explanation">
-        <p>Authenticate to comma with a JWT to:</p>
+        <p>Authenticate to ${escapeHtml(backend.label)} with a JWT to:</p>
         <ul>
-          <li>open your private comma routes;</li>
+          <li>open your private ${escapeHtml(backend.label)} routes;</li>
           <li>request missing driver video from a device you own; or</li>
           <li>watch a queued device upload and open the clip when it is ready.</li>
         </ul>
-        <p>Public routes need no authentication. Get a token from <a href="https://jwt.comma.ai" target="_blank" rel="noreferrer">jwt.comma.ai</a>; it is saved only in this browser.</p>
+        <p>Public routes need no authentication. Get a token from ${tokenLink}; it is saved only in this browser.</p>
       </div>
       ${warning}
-      <div class="token-row"><input id="token-input" type="password" autocomplete="off" aria-label="comma JWT" placeholder="Paste comma JWT"/><button class="secondary" id="save-token-button" type="button">Authenticate</button></div>
+      <div class="token-row"><input id="token-input" type="password" autocomplete="off" aria-label="${escapeHtml(backend.label)} JWT" placeholder="Paste ${escapeHtml(backend.label)} JWT"/><button class="secondary" id="save-token-button" type="button">Authenticate</button></div>
     </section>`;
     return;
   }
 
   const status = authCheck.status === "valid"
-    ? `<span class="auth-status valid">Verified with comma</span>`
+    ? `<span class="auth-status valid">Verified with ${escapeHtml(backend.label)}</span>`
     : authCheck.status === "error"
       ? `<span class="auth-status warning">Saved; verification unavailable</span>`
-      : `<span class="auth-status checking">Checking with comma…</span>`;
-  authPanel.innerHTML = `<p class="jwt-saved"><strong>Authenticated to comma with a saved JWT.</strong> Private routes are enabled; device uploads require its owner's JWT. ${status} <button class="link-button" id="recheck-auth-button" type="button">Recheck</button> <button class="link-button" id="sign-out-button" type="button">Remove</button></p>`;
+      : `<span class="auth-status checking">Checking with ${escapeHtml(backend.label)}…</span>`;
+  authPanel.innerHTML = `<p class="jwt-saved"><strong>Authenticated to ${escapeHtml(backend.label)} with a saved JWT.</strong> Private routes are enabled; device uploads require its owner's JWT. ${status} <button class="link-button" id="recheck-auth-button" type="button">Recheck</button> <button class="link-button" id="sign-out-button" type="button">Remove</button></p>`;
+}
+
+/** Short host label for a token-help link (e.g. "jwt.comma.ai"). */
+function tokenHostLabel(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "your token provider";
+  }
+}
+
+/** Hostname of the active backend's connect-style frontend, for placeholders. */
+function connectFrontendHost(): string {
+  try {
+    return new URL(getBackend().connectFrontendUrl).hostname;
+  } catch {
+    return "connect.example.com";
+  }
 }
 
 async function verifyStoredAuth(): Promise<void> {

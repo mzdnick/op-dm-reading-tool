@@ -1,3 +1,5 @@
+import { getBackend } from "./backend";
+
 export const ROUTE_QUERY_PARAM = "route";
 export const ROUTE_TIME_QUERY_PARAM = "t";
 
@@ -14,29 +16,52 @@ export interface ParsedRouteInput {
 export const DEFAULT_CLIP_START_SECONDS = 0;
 export const DEFAULT_CLIP_END_SECONDS = 30;
 
+/**
+ * Hosts whose `https://<host>/...` URLs are accepted as connect-style clip
+ * links. Always includes comma (so shared links work no matter the active
+ * backend), plus the active backend's own connect frontend.
+ */
+function acceptedConnectHosts(): string[] {
+  const hosts = new Set<string>(["connect.comma.ai"]);
+  const frontend = getBackend().connectFrontendUrl;
+  try {
+    hosts.add(new URL(frontend).hostname);
+  } catch {
+    /* ignore malformed */
+  }
+  return [...hosts];
+}
+
 export function parseRouteInput(input: string): ParsedRouteInput {
   const trimmed = input.trim();
-  if (!trimmed) throw new Error("Paste a public comma Connect URL or route name first.");
+  if (!trimmed) throw new Error("Paste a Connect URL or route name first.");
 
-  if (trimmed.startsWith("https://connect.comma.ai/")) {
-    const url = new URL(trimmed);
-    const parts = url.pathname.split("/").filter(Boolean);
-    if (parts.length < 2) {
-      throw new Error("Connect URLs need at least /<dongle>/<route> in the path.");
+  if (trimmed.startsWith("https://")) {
+    let url: URL;
+    try {
+      url = new URL(trimmed);
+    } catch {
+      url = undefined as unknown as URL;
     }
-    const [dongleId, routeId] = parts;
-    const startSeconds = parseClipSecond(parts[2], DEFAULT_CLIP_START_SECONDS);
-    const endSeconds = parseClipSecond(parts[3], DEFAULT_CLIP_END_SECONDS);
-    if (endSeconds <= startSeconds) throw new Error("Connect clip end must be after its start time.");
-    return {
-      routeName: `${dongleId}|${routeId}`,
-      dongleId,
-      routeId,
-      source: "connect-url",
-      startSeconds,
-      endSeconds,
-      explicitClipRange: parts.length >= 4,
-    };
+    if (url && acceptedConnectHosts().includes(url.hostname)) {
+      const parts = url.pathname.split("/").filter(Boolean);
+      if (parts.length < 2) {
+        throw new Error("Connect URLs need at least /<dongle>/<route> in the path.");
+      }
+      const [dongleId, routeId] = parts;
+      const startSeconds = parseClipSecond(parts[2], DEFAULT_CLIP_START_SECONDS);
+      const endSeconds = parseClipSecond(parts[3], DEFAULT_CLIP_END_SECONDS);
+      if (endSeconds <= startSeconds) throw new Error("Connect clip end must be after its start time.");
+      return {
+        routeName: `${dongleId}|${routeId}`,
+        dongleId,
+        routeId,
+        source: "connect-url",
+        startSeconds,
+        endSeconds,
+        explicitClipRange: parts.length >= 4,
+      };
+    }
   }
 
   const routeName = trimmed.replace("/", "|");
