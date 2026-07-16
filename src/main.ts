@@ -141,6 +141,7 @@ byId<HTMLElement>("codec-summary").textContent = support.supported
 
 let currentRoute: DriverDebugRoute | null = null;
 let videoPlayer: DriverVideoPlayer | null = null;
+let currentDriverVideoSize: { width: number; height: number } | null = null;
 let currentScanController: AbortController | null = null;
 let currentUploadController: AbortController | null = null;
 let authCheck: AuthCheckResult = isSignedIn() ? { status: "checking" } : { status: "missing" };
@@ -226,6 +227,7 @@ async function scanRoute(routeInput: string, updateHistory: boolean): Promise<vo
   cancelCurrentUploadWatch();
   videoPlayer?.destroy();
   videoPlayer = null;
+  currentDriverVideoSize = null;
   currentRoute = null;
   const controller = new AbortController();
   currentScanController = controller;
@@ -259,6 +261,7 @@ async function loadRoute(routeInput: string, updateHistory: boolean): Promise<vo
   viewer.hidden = true;
   videoPlayer?.destroy();
   videoPlayer = null;
+  currentDriverVideoSize = null;
   input.value = routeInput.trim();
   if (updateHistory) {
     window.history.pushState({}, "", buildRouteShareUrl(window.location.origin, import.meta.env.BASE_URL, routeInput));
@@ -422,7 +425,7 @@ function renderViewer(route: DriverDebugRoute): void {
       <div class="route-meta"><span>${formatTime(route.startSeconds)}–${formatTime(route.endSeconds)}</span><span>${route.logSource} · ${formatHz(route.telemetryHz)}</span>${route.highResolutionRequested && route.logSource === "qlogs" ? "<span>rlog unavailable</span>" : ""}</div>
     </header>
     <p id="model-provenance" class="model-provenance">${escapeHtml(formatModelProvenance(initialProvenance, true))}</p>
-    <div class="video-shell">
+    <div id="video-shell" class="video-shell">
       <video id="driver-video" muted playsinline></video>
       <div class="model-input-frame" aria-hidden="true"></div>
       <div id="driver-box" class="face-box driver-box" role="button" tabindex="0" aria-label="Fade driver seat overlay" aria-pressed="false" title="Hover or tap to see the face" hidden><span>DRIVER SEAT</span></div>
@@ -502,15 +505,17 @@ function renderViewer(route: DriverDebugRoute): void {
     queueRouteTimeUrlUpdate(routeSeconds);
   });
   playbackToggle.addEventListener("click", () => {
-    if (video.paused) void video.play();
-    else video.pause();
+    if (!videoPlayer) return;
+    playbackToggle.textContent = videoPlayer.togglePlayback() ? "Pause" : "Play";
   });
   video.addEventListener("play", () => { playbackToggle.textContent = "Pause"; });
-  video.addEventListener("pause", () => { playbackToggle.textContent = "Play"; });
+  video.addEventListener("pause", () => {
+    playbackToggle.textContent = videoPlayer?.isPlaybackRequested ? "Pause" : "Play";
+  });
   video.addEventListener("timeupdate", () => {
     if (!videoPlayer || !currentRoute) return;
     const routeSeconds = videoPlayer.playbackRouteStart + video.currentTime;
-    if (routeSeconds >= currentRoute.endSeconds) video.pause();
+    if (routeSeconds >= currentRoute.endSeconds) videoPlayer.pause();
     scrubber.value = String(Math.min(currentRoute.endSeconds, Math.max(currentRoute.startSeconds, routeSeconds)));
     renderTelemetry(routeSeconds);
     queueRouteTimeUrlUpdate(routeSeconds);
@@ -567,6 +572,9 @@ async function loadVideo(route: DriverDebugRoute): Promise<void> {
   }
   const seekToStart = () => {
     if (videoPlayer !== player || currentRoute !== route) return;
+    currentDriverVideoSize = { width: video.videoWidth, height: video.videoHeight };
+    byId<HTMLElement>("video-shell").style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
+    renderTelemetry(deepLinkedRouteTime(route));
     byId<HTMLButtonElement>("playback-toggle").disabled = false;
     byId<HTMLElement>("video-placeholder").hidden = true;
     setProgress("Driver Monitoring debugger ready", 1);
@@ -635,7 +643,9 @@ function renderTelemetry(routeSeconds: number): void {
     ["engaged / hands", `${vehicle?.enabled ? "yes" : "no"} / ${vehicle?.steeringPressed ? "on" : "off"}`],
   ]);
   byId<HTMLElement>("model-values").innerHTML = rows([
-    ["selected / other / RHD", `${percent(selected?.faceProb)} / ${percent(other?.faceProb)} / ${percent(model.wheelOnRightProb)}`],
+    ["driver-seat face confidence", percent(selected?.faceProb)],
+    ["other-seat face confidence", percent(other?.faceProb)],
+    ["right-hand-drive confidence", percent(model.wheelOnRightProb)],
     ["eyes L / R", `${percent(selected?.leftEyeProb)} / ${percent(selected?.rightEyeProb)}`],
     ["blink L / R", `${percent(selected?.leftBlinkProb)} / ${percent(selected?.rightBlinkProb)}`],
     ["sunglasses / phone", `${percent(selected?.sunglassesProb)} / ${percent(selected?.phoneProb)}`],
@@ -661,18 +671,19 @@ function renderFaceBox(id: string, driver: DriverModelData | null, deviceType: s
     return;
   }
   const [faceX, faceY] = driver.facePosition;
-  const [pitch = 0, yaw = 0] = driver.faceOrientation;
   const baseX = 1080 - 1714 * faceX;
   const baseY = -135 + 504 + Math.abs(faceX) * 112 + (1205 - Math.abs(faceX) * 724) * faceY;
-  const scale = deviceType.toLowerCase() === "mici" ? 1.25 : 1;
-  const centerX = 100 - (((baseX - 1080) * scale + 1080) / 2160) * 100 + yaw * 4.5;
-  const centerY = (((baseY - 540) * scale + 540) / 1080) * 100 + pitch * 4;
-  const uncertainty = Math.max(...driver.faceOrientationStd.slice(0, 2), 0);
-  const width = Math.min(18, Math.max(7, 8 + Math.abs(yaw) * 4 + uncertainty * 4));
-  box.style.left = `${Math.max(0, Math.min(100 - width, centerX - width / 2))}%`;
-  box.style.top = `${Math.max(0, Math.min(80, centerY - width * 0.58))}%`;
-  box.style.width = `${width}%`;
-  box.style.height = `${width * 1.16}%`;
+  const mici = deviceType.toLowerCase() === "mici"
+    || currentDriverVideoSize?.width === 1344 && currentDriverVideoSize.height === 760;
+  const scale = mici ? 1.25 : 1;
+  const centerX = 100 - (((baseX - 1080) * scale + 1080) / 2160) * 100;
+  const centerY = (((baseY - 540) * scale + 540) / 1080) * 100;
+  const sizePercent = (mici ? 75 / 536 : 220 / 2160) * 100;
+  box.dataset.cameraProfile = mici ? "mici" : "tici";
+  box.style.left = `${centerX}%`;
+  box.style.top = `${centerY}%`;
+  box.style.width = `${sizePercent}%`;
+  box.style.height = "auto";
   box.hidden = false;
 }
 
