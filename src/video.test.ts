@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DriverVideoFrameIndex } from "./dm";
-import { DriverVideoPlayer, framesForClip, planVideoRanges, splitAnnexB } from "./video";
+import { DriverVideoPlayer, framesForClip, planVideoRanges, selectMediaSourceCtor, splitAnnexB } from "./video";
 
 describe("driver video range planning", () => {
   it("backs up to the preceding keyframe and returns encode order", () => {
@@ -31,6 +31,55 @@ describe("driver video range planning", () => {
   });
 });
 
+describe("selectMediaSourceCtor", () => {
+  const originalMediaSource = (globalThis as { MediaSource?: unknown }).MediaSource;
+  const originalManagedMediaSource = (globalThis as { ManagedMediaSource?: unknown }).ManagedMediaSource;
+
+  afterEach(() => {
+    // Restore the environment the suite actually runs in (Node has no MediaSource by default).
+    delete (globalThis as { MediaSource?: unknown }).MediaSource;
+    delete (globalThis as { ManagedMediaSource?: unknown }).ManagedMediaSource;
+    if (originalMediaSource !== undefined) {
+      (globalThis as { MediaSource?: unknown }).MediaSource = originalMediaSource;
+    }
+    if (originalManagedMediaSource !== undefined) {
+      (globalThis as { ManagedMediaSource?: unknown }).ManagedMediaSource = originalManagedMediaSource;
+    }
+  });
+
+  it("prefers the standard MediaSource when both are available", () => {
+    const standard = class MediaSource {};
+    const managed = class ManagedMediaSource {};
+    (globalThis as { MediaSource?: unknown }).MediaSource = standard;
+    (globalThis as { ManagedMediaSource?: unknown }).ManagedMediaSource = managed;
+
+    const selection = selectMediaSourceCtor();
+
+    expect(selection).not.toBeNull();
+    expect(selection?.ctor).toBe(standard);
+    expect(selection?.managed).toBe(false);
+  });
+
+  it("falls back to ManagedMediaSource when only it is available (iOS path)", () => {
+    delete (globalThis as { MediaSource?: unknown }).MediaSource;
+    const managed = class ManagedMediaSource {};
+    (globalThis as { ManagedMediaSource?: unknown }).ManagedMediaSource = managed;
+
+    const selection = selectMediaSourceCtor();
+
+    expect(selection).not.toBeNull();
+    expect(selection?.ctor).toBe(managed);
+    expect(selection?.managed).toBe(true);
+  });
+
+  it("returns null when neither is available (iOS < 17.1)", () => {
+    delete (globalThis as { MediaSource?: unknown }).MediaSource;
+    delete (globalThis as { ManagedMediaSource?: unknown }).ManagedMediaSource;
+
+    expect(selectMediaSourceCtor()).toBeNull();
+  });
+});
+
 describe("DriverVideoPlayer seeking", () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -52,7 +101,11 @@ describe("DriverVideoPlayer seeking", () => {
       get paused() { return paused; },
       play,
     } as unknown as HTMLVideoElement;
-    const player = new DriverVideoPlayer(video);
+    // managed=false: this test exercises the desktop/MediaSource seek path,
+    // not ManagedMediaSource attach. The constructor requires the flag (added
+    // alongside the iOS ManagedMediaSource path) since this branch rebases on
+    // top of that change.
+    const player = new DriverVideoPlayer(video, false);
     (player as unknown as { pendingSeekTime: number | null }).pendingSeekTime = 30;
     (player as unknown as { playbackRequested: boolean }).playbackRequested = true;
     (player as unknown as { resumeAfterSeek: boolean }).resumeAfterSeek = true;
