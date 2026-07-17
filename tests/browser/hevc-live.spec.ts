@@ -196,6 +196,26 @@ test("introduces the comma Discord before linking to its channels", async ({ pag
   })).toBe(true);
 });
 
+test("exposes shareable policy heading permalinks", async ({ page }) => {
+  await page.goto("/");
+  const ownershipHeading = page.locator("#open-code-your-hardware");
+  const ownershipLink = ownershipHeading.locator(".heading-permalink");
+  const evidenceHeading = page.locator("#driver-monitoring-false-positive");
+  const evidenceLink = evidenceHeading.locator(".heading-permalink");
+
+  await expect(ownershipLink).toHaveAttribute("href", "#open-code-your-hardware");
+  await expect(evidenceLink).toHaveAttribute("href", "#driver-monitoring-false-positive");
+  await expect(ownershipLink).toHaveCSS("opacity", "0");
+  await ownershipHeading.hover();
+  await expect(ownershipLink).toHaveCSS("opacity", "1");
+  await ownershipLink.click();
+  await expect(page).toHaveURL(/#open-code-your-hardware$/);
+
+  await page.goto("/#driver-monitoring-false-positive");
+  await expect(evidenceHeading).toBeInViewport();
+  await expect.poll(() => evidenceHeading.evaluate((element) => Math.abs(element.getBoundingClientRect().top))).toBeLessThan(20);
+});
+
 test("loads the public Mici demo from the route form", async ({ page }) => {
   const demo = `${PUBLIC_MICI_ROUTE}/438/452`;
   await page.goto("/");

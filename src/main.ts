@@ -74,7 +74,7 @@ app.innerHTML = `
       </ol>
     </section>
     <section class="policy-note">
-      <h2>Open code. Your hardware. Conditional online services.</h2>
+      <h2 id="open-code-your-hardware" class="permalink-heading"><span>Open code. Your hardware. Conditional online services.</span><a class="heading-permalink" href="#open-code-your-hardware" aria-label="Link to Open code, your hardware, conditional online services" title="Link to this section"><span aria-hidden="true">🔗</span></a></h2>
       <p><a href="https://github.com/commaai/openpilot" target="_blank" rel="noreferrer">openpilot's MIT license</a> lets you inspect, change, and run the software. The hardware you bought is yours, too: you can modify the device and choose what software it runs. Access to comma's servers and shop is separate and conditional.</p>
       <p class="discord-prerequisite"><strong>Some citations and reporting links below open Discord.</strong> Join the <a href="https://discord.comma.ai" target="_blank" rel="noreferrer">comma Discord server</a> and sign in first. Discord channel links will not work until your account has joined the server.</p>
       <ul class="policy-points">
@@ -85,7 +85,7 @@ app.innerHTML = `
       </ul>
       <p class="policy-caveat">Users have historically reported one courtesy ban reversal per device. This is not a published right or a current guarantee.</p>
       <div class="feedback-path">
-        <h3>Driver monitoring false positive? Send evidence.</h3>
+        <h3 id="driver-monitoring-false-positive" class="permalink-heading"><span>Driver monitoring false positive? Send evidence.</span><a class="heading-permalink" href="#driver-monitoring-false-positive" aria-label="Link to Driver monitoring false positive, send evidence" title="Link to this section"><span aria-hidden="true">🔗</span></a></h3>
         <p class="feedback-lead"><strong>Getting flagged while attentive?</strong> Do not weaken or bypass driver monitoring. Use this quick check before reporting it to comma.</p>
         <p class="phone-in-hand-note"><strong>First: put down or mount the phone.</strong> Holding a phone—including while using voice-to-text—is intentionally treated as distraction by newer driver-monitoring models. In a <a href="https://discord.com/channels/469524606043160576/954493346250887168/1526951756112723998" target="_blank" rel="noreferrer">Discord explanation of this behavior</a>, comma founder George Hotz (geohot) says a phone in hand is a driver-monitoring trigger and cites California <a href="https://leginfo.legislature.ca.gov/faces/codes_displaySection.xhtml?lawCode=VEH&amp;sectionNum=23123.5." target="_blank" rel="noreferrer">Vehicle Code §23123.5</a> as a reference point. Reproduce the issue hands-free before filing a report.</p>
         <p class="feedback-priority-note"><strong>Still getting alerts hands-free? Send the segment.</strong> Hotz says comma gives genuine attentive false-positive fixes high priority; he cited rare objects such as Celsius cans being mistaken for phones. <a href="https://discord.com/channels/469524606043160576/954493346250887168/1526980696894345480" target="_blank" rel="noreferrer">Read the Discord warning.</a></p>
@@ -195,6 +195,7 @@ viewer.addEventListener("click", (event) => {
 async function initialize(): Promise<void> {
   if (isSignedIn()) await verifyStoredAuth();
   await initializeFromUrl();
+  restoreFragmentAnchor();
 }
 
 async function initializeFromUrl(): Promise<void> {
@@ -299,13 +300,16 @@ async function loadRoute(routeInput: string, updateHistory: boolean): Promise<vo
     }
   } finally {
     setBusy(false);
-    restoreInstructionAnchor();
+    restoreFragmentAnchor();
   }
 }
 
-function restoreInstructionAnchor(): void {
-  if (window.location.hash !== "#how-to-use") return;
-  window.requestAnimationFrame(() => byId<HTMLElement>("how-to-use").scrollIntoView({ block: "start" }));
+function restoreFragmentAnchor(): void {
+  const id = window.location.hash.slice(1);
+  if (!id) return;
+  const target = document.getElementById(id);
+  if (!target) return;
+  window.requestAnimationFrame(() => target.scrollIntoView({ block: "start" }));
 }
 
 function renderMissingDriverVideo(error: MissingDriverVideoError, routeInput: string): void {
