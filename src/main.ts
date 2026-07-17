@@ -2,6 +2,7 @@ import "./styles.css";
 import { checkAccessToken, completeAuthCallback, isSignedIn, setAccessToken, signOut, type AuthCheckResult } from "./auth";
 import { loadDriverDebugRoute, MissingDriverVideoError, type DriverDebugRoute } from "./debugger";
 import { sampleAt, selectDriver, type DriverModelData, type DriverMonitoringSample } from "./dm";
+import { projectFaceAnchor, resolveDriverCameraProfile } from "./faceGeometry";
 import { formatModelProvenance, modelProvenanceDetails, resolveDmModelProvenance, routeModelProvenance } from "./modelProvenance";
 import { collectPoseHistory, formatAbsoluteDegrees, formatPitchDegrees, formatSignedDegrees, poseVectorGeometry, poseWidgetLayout, poseYawForVideo, radiansToDegrees, ticiFacePolyline, type PoseOverlayMode } from "./pose";
 import { buildAuthCallbackCleanUrl, buildRouteShareUrl, buildRouteTimeUrl, parseRouteInput, routeInputFromUrl, routeTimeFromUrl } from "./routeInput";
@@ -769,18 +770,16 @@ function renderFaceBox(id: string, driver: DriverModelData | null, deviceType: s
     box.hidden = true;
     return;
   }
-  const [faceX, faceY] = driver.facePosition;
-  const baseX = 1080 - 1714 * faceX;
-  const baseY = -135 + 504 + Math.abs(faceX) * 112 + (1205 - Math.abs(faceX) * 724) * faceY;
-  const mici = deviceType.toLowerCase() === "mici"
-    || currentDriverVideoSize?.width === 1344 && currentDriverVideoSize.height === 760;
-  const scale = mici ? 1.25 : 1;
-  const centerX = 100 - (((baseX - 1080) * scale + 1080) / 2160) * 100;
-  const centerY = (((baseY - 540) * scale + 540) / 1080) * 100;
-  const sizePercent = (mici ? 75 / 536 : 220 / 2160) * 100;
-  box.dataset.cameraProfile = mici ? "mici" : "tici";
-  box.style.left = `${centerX}%`;
-  box.style.top = `${centerY}%`;
+  const profile = resolveDriverCameraProfile(deviceType, currentDriverVideoSize);
+  const anchor = projectFaceAnchor(driver.facePosition, profile, currentDriverVideoSize);
+  if (!anchor) {
+    box.hidden = true;
+    return;
+  }
+  const sizePercent = (profile.name === "mici" ? 75 / 536 : 220 / 2160) * 100;
+  box.dataset.cameraProfile = profile.name;
+  box.style.left = `${anchor.centerXPercent}%`;
+  box.style.top = `${anchor.centerYPercent}%`;
   box.style.width = `${sizePercent}%`;
   box.style.height = "auto";
   box.hidden = false;
