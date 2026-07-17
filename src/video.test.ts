@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DriverVideoFrameIndex } from "./dm";
-import { framesForClip, planVideoRanges, splitAnnexB } from "./video";
+import { DriverVideoPlayer, framesForClip, planVideoRanges, splitAnnexB } from "./video";
 
 describe("driver video range planning", () => {
   it("backs up to the preceding keyframe and returns encode order", () => {
@@ -28,6 +28,40 @@ describe("driver video range planning", () => {
 
     const longGop = [frame(0, 0, true, 150), frame(1, 150, false, 150), frame(2, 300, false, 150)];
     expect(planVideoRanges(longGop, 220)).toEqual([{ start: 0, end: 449, frames: longGop }]);
+  });
+});
+
+describe("DriverVideoPlayer seeking", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("resumes requested playback when a pending unbuffered seek returns to buffered video", () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    let paused = true;
+    const play = vi.fn(() => {
+      paused = false;
+      return Promise.resolve();
+    });
+    const video = {
+      buffered: { length: 1, start: () => 0, end: () => 20 },
+      currentTime: 0,
+      error: null,
+      get paused() { return paused; },
+      play,
+    } as unknown as HTMLVideoElement;
+    const player = new DriverVideoPlayer(video);
+    (player as unknown as { pendingSeekTime: number | null }).pendingSeekTime = 30;
+    (player as unknown as { playbackRequested: boolean }).playbackRequested = true;
+    (player as unknown as { resumeAfterSeek: boolean }).resumeAfterSeek = true;
+
+    player.seek(10);
+    vi.advanceTimersByTime(0);
+
+    expect(video.currentTime).toBe(10);
+    expect(play).toHaveBeenCalledOnce();
   });
 });
 

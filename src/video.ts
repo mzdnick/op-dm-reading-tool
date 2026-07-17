@@ -115,9 +115,11 @@ export class DriverVideoPlayer {
   seek(routeSeconds: number): void {
     const target = Math.max(0, routeSeconds - this.playbackRouteStart);
     if (isBuffered(this.video, target, SEEK_BUFFER_CUSHION_SECONDS)) {
+      const shouldResume = this.playbackRequested;
       this.pendingSeekTime = null;
       this.resumeAfterSeek = false;
       this.video.currentTime = target;
+      if (shouldResume) this.requestPlayback();
       return;
     }
     const shouldResume = this.playbackRequested || !this.video.paused;
