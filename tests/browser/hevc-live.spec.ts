@@ -181,6 +181,21 @@ test("keeps the submitted route in the address bar while driver video is missing
   await expect(page).toHaveURL(new RegExp(`route=${encodeURIComponent(clip)}`));
 });
 
+test("introduces the comma Discord before linking to its channels", async ({ page }) => {
+  await page.goto("/");
+  const prerequisite = page.locator(".discord-prerequisite");
+  await expect(prerequisite).toContainText("Discord channel links will not work until your account has joined the server");
+  await expect(prerequisite.locator("a")).toHaveAttribute("href", "https://discord.comma.ai");
+  await expect(page.locator(".policy-note")).toContainText("public Discord warning");
+  await expect(page.locator(".policy-note")).toContainText("comma Discord's #openpilot-experience channel");
+  await expect(page.locator(".policy-note")).toContainText("comma Discord's #submit-feedback channel");
+  expect(await page.locator(".policy-note").evaluate((section) => {
+    const notice = section.querySelector(".discord-prerequisite");
+    const firstChannelLink = section.querySelector('a[href*="discord.com/channels"]');
+    return Boolean(notice && firstChannelLink && (notice.compareDocumentPosition(firstChannelLink) & Node.DOCUMENT_POSITION_FOLLOWING));
+  })).toBe(true);
+});
+
 test("loads the public Mici demo from the route form", async ({ page }) => {
   const demo = `${PUBLIC_MICI_ROUTE}/438/452`;
   await page.goto("/");

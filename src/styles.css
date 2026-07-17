@@ -249,6 +249,8 @@ dd { margin: 0; text-align: right; font-family: "SFMono-Regular", Consolas, mono
 .connect-tutorial code { color: #8fd0fb; }
 .policy-note .feedback-destination { margin-top: 16px; color: #c3ced4; }
 .feedback-destination strong { color: #edf4f7; }
+.policy-note .discord-prerequisite { max-width: 84ch; margin: 18px 0 0; padding: 12px 14px; border: 1px solid #33424c; border-radius: 8px; background: #11171c; color: #aebbc3; }
+.discord-prerequisite strong { color: #edf4f7; }
 .policy-note .feedback-choice-heading { margin: 18px 0 0; color: #aebbc3; }
 .feedback-choice-heading strong { color: #edf4f7; }
 .feedback-sharing-options { max-width: 94ch; margin: 12px 0 0; padding-left: 20px; color: #c3ced4; }
