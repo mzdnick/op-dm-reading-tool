@@ -138,13 +138,8 @@ const progressBar = byId<HTMLElement>("progress-bar");
 const viewer = byId<HTMLElement>("viewer");
 const support = detectHevcSupport();
 
-// Shared between the codec banner and the video placeholder so the
-// managed-MSE wording lives in one place.
 const MANAGED_SUPPORT_MESSAGE = "Driver video needs iOS 17.1+ (Managed Media Source). Telemetry is still available.";
 
-// Banner copy for the HEVC support card: which backend plays the clip, or why
-// it can't. Three states — standard MediaSource, managed-only (iOS 17.1+),
-// or unsupported.
 function describeHevcSupport(support: HevcSupport): string {
   if (support.supported) {
     return support.managed
