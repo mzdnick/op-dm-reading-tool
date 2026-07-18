@@ -78,12 +78,19 @@ export function computePictureBox(
 export class PictureBoxTracker {
   private readonly video: HTMLVideoElement;
   private readonly wrapper: HTMLElement;
+  // The shell is the video's parent (`.video-shell`) — the same element the
+  // wrapper sits in. Captured once so apply() resolves the picture rect
+  // shell-relative without depending on the wrapper's offsetParent, which a
+  // future CSS change (a positioned ancestor inserted between them, or
+  // .video-shell losing position: relative) could silently change.
+  private readonly shell: HTMLElement | null;
   private readonly observer: ResizeObserver;
   private connected = false;
 
   constructor(video: HTMLVideoElement, wrapper: HTMLElement) {
     this.video = video;
     this.wrapper = wrapper;
+    this.shell = video.parentElement;
     this.observer = new ResizeObserver(() => this.apply());
   }
 
@@ -95,8 +102,7 @@ export class PictureBoxTracker {
     // The shell drives the video's layout box; observe it too so viewport
     // changes (docked DevTools, resize) update the wrapper even when the
     // video element's own size is stable relative to its parent.
-    const shell = this.video.parentElement;
-    if (shell) this.observer.observe(shell);
+    if (this.shell) this.observer.observe(this.shell);
     if (this.video.readyState >= 1) this.apply();
     else this.video.addEventListener("loadedmetadata", this.apply, { once: true });
   }
@@ -110,15 +116,16 @@ export class PictureBoxTracker {
   }
 
   private readonly apply = (): void => {
-    // The wrapper is absolutely positioned inside the shell (its offset
-    // parent), so compute the picture rect relative to the shell, not the
-    // viewport. The video is a sibling of the wrapper inside the same shell,
-    // so subtracting the two bounding rects gives the video's offset within
-    // the shell; computePictureBox then carves the letterboxed picture out of
-    // that and we get a shell-relative rectangle the wrapper can use directly.
-    const offsetParent = this.wrapper.offsetParent as HTMLElement | null;
-    if (!offsetParent) return;
-    const origin = offsetParent.getBoundingClientRect();
+    // Resolve the picture rect shell-relative: the video and the wrapper are
+    // both children of .video-shell (this.shell), so subtracting the shell's
+    // viewport rect from the video's gives the video's offset within it.
+    // computePictureBox then carves the letterboxed picture out of that and
+    // we get a shell-relative rectangle the wrapper can use directly. We read
+    // the shell from the constructor (the video's parent) rather than the
+    // wrapper's offsetParent so the math does not depend on the wrapper's
+    // positioned-ancestor chain.
+    if (!this.shell) return;
+    const origin = this.shell.getBoundingClientRect();
     const rect = this.video.getBoundingClientRect();
     const box = computePictureBox(
       rect.left - origin.left,
